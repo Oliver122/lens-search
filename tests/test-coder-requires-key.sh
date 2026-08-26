@@ -20,3 +20,4 @@ git add requirements && git commit -m spec >/dev/null
 ./scripts/open-auto-feature.sh "$slug"
 unset CURSOR_API_KEY || true
 assert_fail "coder without key" ./scripts/run-coder.sh "$slug"
+assert_fail "orchestrator without key" ./scripts/run-orchestrator.sh "$slug"

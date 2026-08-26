@@ -4,6 +4,9 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
+# Policy tests are local-only; do not inherit CI push flags.
+unset OPEN_AUTO_FEATURE_PUSH OPEN_AUTO_FEATURE_MR OPEN_MISSING_REQ_PUSH OPEN_MISSING_REQ_COMMENT OPEN_AUTO_FIX_PUSH
+
 make_repo() {
   local dir="$1"
   mkdir -p "$dir"
@@ -44,4 +47,13 @@ assert_ok() {
     echo "assert_ok: expected success: ${msg}" >&2
     return 1
   fi
+}
+
+install_test_agent() {
+  local dest="$1"
+  mkdir -p "$dest"
+  cp "$ROOT/tests/fake-agent.sh" "$dest/agent"
+  chmod +x "$dest/agent"
+  export AGENT_BIN="$dest/agent"
+  export PATH="${dest}:${PATH}"
 }

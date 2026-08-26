@@ -285,6 +285,65 @@ impl MemoryStore {
     }
 }
 
+pub fn listings_sorted_by_price(listings: &[Listing]) -> Vec<Listing> {
+    let mut out = listings.to_vec();
+    out.sort_by(|a, b| price_sort_key(&a.price).cmp(&price_sort_key(&b.price)));
+    out
+}
+
+fn price_sort_key(price: &str) -> i64 {
+    let digits: String = price.chars().filter(|c| c.is_ascii_digit()).take(18).collect();
+    if digits.is_empty() {
+        i64::MAX
+    } else {
+        digits.parse().unwrap_or(i64::MAX)
+    }
+}
+
+pub fn encode_listing_line(listing: &Listing) -> String {
+    format!(
+        "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
+        listing.title,
+        listing.price,
+        listing.url,
+        listing.site,
+        listing.search_term,
+        listing.first_seen,
+        listing.last_seen,
+        listing.product_images.join("|")
+    )
+}
+
+pub fn parse_listing_line(line: &str) -> Option<Listing> {
+    let mut parts = line.splitn(8, '\t');
+    let title = parts.next()?.to_string();
+    let price = parts.next()?.to_string();
+    let url = parts.next()?.to_string();
+    let site = parts.next()?.to_string();
+    let search_term = parts.next()?.to_string();
+    let first_seen = parts.next()?.to_string();
+    let last_seen = parts.next()?.to_string();
+    let images = parts.next()?;
+    if url.is_empty() {
+        return None;
+    }
+    let product_images = if images.is_empty() {
+        Vec::new()
+    } else {
+        images.split('|').map(str::to_string).collect()
+    };
+    Some(Listing {
+        title,
+        price,
+        url,
+        site,
+        search_term,
+        first_seen,
+        last_seen,
+        product_images,
+    })
+}
+
 pub fn encode_failure_line(failure: &FetchFailure) -> String {
     format!("{}\t{}\t{}", failure.run_id, failure.site, failure.term)
 }
@@ -1106,5 +1165,32 @@ mod tests {
             fetch_store.listings().is_empty(),
             "a fetch whose dates fall outside the chosen range must not be kept"
         );
+    }
+
+    #[test]
+    fn listings_are_sorted_by_price() {
+        let listings = vec![
+            listing_with_dates("https://example.com/mid", "2024-01-01", "2024-01-01"),
+            listing_with_dates("https://example.com/high", "2024-01-01", "2024-01-01"),
+            listing_with_dates("https://example.com/low", "2024-01-01", "2024-01-01"),
+        ];
+        let mut listings = listings;
+        listings[0].price = "120 €".to_string();
+        listings[1].price = "200 €".to_string();
+        listings[2].price = "40 €".to_string();
+
+        let sorted = listings_sorted_by_price(&listings);
+        let urls: Vec<&str> = sorted.iter().map(|listing| listing.url.as_str()).collect();
+        assert_eq!(
+            urls,
+            [
+                "https://example.com/low",
+                "https://example.com/mid",
+                "https://example.com/high"
+            ]
+        );
+        assert_eq!(sorted[0].price, "40 €");
+        assert_eq!(sorted[1].price, "120 €");
+        assert_eq!(sorted[2].price, "200 €");
     }
 }

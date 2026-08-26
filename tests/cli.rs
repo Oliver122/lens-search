@@ -1,6 +1,8 @@
 use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use lens_search::{encode_listing_line, Listing};
+
 fn bin() -> Command {
     Command::new(env!("CARGO_BIN_EXE_lens-search"))
 }
@@ -121,6 +123,91 @@ fn terminal_reads_stored_site_fetch_failure_after_run() {
     assert_eq!(parts[0], "eBay");
     assert_eq!(parts[1], "Fahrrad");
     assert!(!parts[2].is_empty(), "run id must be present");
+
+    let _ = std::fs::remove_file(&store);
+}
+
+fn unique_findings() -> std::path::PathBuf {
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    std::env::temp_dir().join(format!(
+        "lens-search-findings-{}-{}",
+        std::process::id(),
+        nanos
+    ))
+}
+
+fn stored_finding(title: &str, price: &str, url: &str) -> Listing {
+    Listing {
+        title: title.to_string(),
+        price: price.to_string(),
+        url: url.to_string(),
+        site: "Kleinanzeigen".to_string(),
+        search_term: "Fahrrad".to_string(),
+        first_seen: "2024-06-01".to_string(),
+        last_seen: "2024-06-01".to_string(),
+        product_images: vec![format!("{url}/photo.jpg")],
+    }
+}
+
+#[test]
+fn terminal_lists_stored_findings_sorted_by_price() {
+    let store = unique_findings();
+    let _ = std::fs::remove_file(&store);
+
+    let lines = [
+        encode_listing_line(&stored_finding(
+            "mid",
+            "120 €",
+            "https://example.com/mid",
+        )),
+        encode_listing_line(&stored_finding(
+            "high",
+            "200 €",
+            "https://example.com/high",
+        )),
+        encode_listing_line(&stored_finding(
+            "low",
+            "40 €",
+            "https://example.com/low",
+        )),
+    ];
+    std::fs::write(&store, lines.join("\n") + "\n").expect("write findings");
+
+    let output = bin()
+        .args(["list"])
+        .env("LENS_SEARCH_FINDINGS", &store)
+        .output()
+        .expect("list binary");
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let printed: Vec<&str> = stdout.lines().collect();
+    assert_eq!(printed.len(), 3, "stdout: {stdout}");
+    assert!(
+        printed[0].contains("https://example.com/low"),
+        "cheapest first: {}",
+        printed[0]
+    );
+    assert!(
+        printed[1].contains("https://example.com/mid"),
+        "middle price second: {}",
+        printed[1]
+    );
+    assert!(
+        printed[2].contains("https://example.com/high"),
+        "highest last: {}",
+        printed[2]
+    );
+    let low_at = stdout.find("https://example.com/low").expect("low url");
+    let mid_at = stdout.find("https://example.com/mid").expect("mid url");
+    let high_at = stdout.find("https://example.com/high").expect("high url");
+    assert!(low_at < mid_at && mid_at < high_at, "must be sorted by price");
 
     let _ = std::fs::remove_file(&store);
 }

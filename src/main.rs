@@ -3,8 +3,9 @@ use std::io::Write;
 use std::path::PathBuf;
 
 use lens_search::{
-    encode_failure_line, parse_failure_line, parse_run_args, run, scan_requests, FetchFailure,
-    ListingPage, PageSource, PaginatingScanner, ScanRequest, SearchPage, SiteScanner,
+    encode_failure_line, encode_listing_line, listings_sorted_by_price, parse_failure_line,
+    parse_listing_line, parse_run_args, run, scan_requests, FetchFailure, Listing, ListingPage,
+    PageSource, PaginatingScanner, ScanRequest, SearchPage, SiteScanner,
 };
 
 struct CliPageSource {
@@ -35,6 +36,12 @@ fn store_path() -> PathBuf {
     std::env::var_os("LENS_SEARCH_STORE")
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from("lens-search-failures"))
+}
+
+fn findings_path() -> PathBuf {
+    std::env::var_os("LENS_SEARCH_FINDINGS")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("lens-search-findings"))
 }
 
 fn persist_failures(failures: &[FetchFailure]) -> Result<(), String> {
@@ -68,6 +75,48 @@ fn load_failures() -> Result<Vec<FetchFailure>, String> {
     Ok(text.lines().filter_map(parse_failure_line).collect())
 }
 
+fn persist_listings(listings: &[Listing]) -> Result<(), String> {
+    if listings.is_empty() {
+        return Ok(());
+    }
+    let path = findings_path();
+    if let Some(parent) = path.parent() {
+        if !parent.as_os_str().is_empty() {
+            fs::create_dir_all(parent).map_err(|err| err.to_string())?;
+        }
+    }
+    let mut text = String::new();
+    for listing in listings {
+        text.push_str(&encode_listing_line(listing));
+        text.push('\n');
+    }
+    fs::write(&path, text).map_err(|err| err.to_string())
+}
+
+fn load_listings() -> Result<Vec<Listing>, String> {
+    let path = findings_path();
+    let text = match fs::read_to_string(&path) {
+        Ok(text) => text,
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(err) => return Err(err.to_string()),
+    };
+    Ok(text.lines().filter_map(parse_listing_line).collect())
+}
+
+fn print_listings() {
+    match load_listings() {
+        Ok(listings) => {
+            for listing in listings_sorted_by_price(&listings) {
+                println!("{}\t{}\t{}", listing.price, listing.title, listing.url);
+            }
+        }
+        Err(err) => {
+            eprintln!("{err}");
+            std::process::exit(1);
+        }
+    }
+}
+
 fn print_failures() {
     match load_failures() {
         Ok(failures) => {
@@ -84,9 +133,16 @@ fn print_failures() {
 
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
-    if args.first().map(String::as_str) == Some("failures") {
-        print_failures();
-        return;
+    match args.first().map(String::as_str) {
+        Some("failures") => {
+            print_failures();
+            return;
+        }
+        Some("list") => {
+            print_listings();
+            return;
+        }
+        _ => {}
     }
 
     let parsed = match parse_run_args(&args) {
@@ -102,6 +158,10 @@ fn main() {
     let mut scanner = PaginatingScanner::new(CliPageSource { fail_site });
     let run_result = run(&parsed.term, &parsed.places, &mut scanner);
     if let Err(err) = persist_failures(&scanner.fetch_failures()) {
+        eprintln!("{err}");
+        std::process::exit(1);
+    }
+    if let Err(err) = persist_listings(&scanner.store.listings()) {
         eprintln!("{err}");
         std::process::exit(1);
     }

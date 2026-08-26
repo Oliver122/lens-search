@@ -9,7 +9,7 @@ Live board on `auto-feature/orchestrator`. Do not edit `requirements/orchestrato
 | 1 | Push of `req/<slug>` (when `missing-req/<slug>` is not open) still runs `openAutoFeature` (CYCLE, `auto-feature/<slug>`, one MR to `main`). The next agent in that job is an orchestrator, not a single coder for the whole RequirementSet. | done |
 | 2 | The orchestrator splits `requirements/<slug>/specified-tests.md` into two or more subtasks when that file has more than one specified test. A RequirementSet with a single specified test may yield one subtask. | done |
 | 3 | Each subtask coder is a separate agent invocation. Its prompt contains that subtask, `overview.md`, and not the transcripts or full prompts of sibling subtasks. | done |
-| 4 | Subtask coders run in parallel in distinct git worktrees. They do not share one working tree while running. | todo |
+| 4 | Subtask coders run in parallel in distinct git worktrees. They do not share one working tree while running. | done |
 | 5 | When a subtask coder finishes, the orchestrator merges its worktree into `auto-feature/<slug>`. The MR head is that branch, not a worktree branch left unmerged. | todo |
 | 6 | If two worktrees conflict on merge, the orchestrator does not invent a spec. It records the conflict as blocked in `ORCHESTRATION.md` and either retries a serial merge after the other subtask lands or opens `GAPS.md` / missing-req per existing rules (unmet test vs thin spec). It does not force-merge through conflicts. | todo |
 | 7 | `ORCHESTRATION.md` exists on `auto-feature/<slug>` during the cycle and lists each subtask with state `running`, `done`, or `blocked`, updated as subtasks start and finish. | todo |

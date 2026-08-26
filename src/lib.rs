@@ -125,6 +125,70 @@ pub fn scan_requests(term: &str, places: &[String]) -> Vec<ScanRequest> {
         .collect()
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Listing {
+    pub site: String,
+    pub url: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SearchPage {
+    pub listings: Vec<Listing>,
+    pub is_last: bool,
+}
+
+pub trait PageSource {
+    fn fetch_page(&mut self, request: &ScanRequest, page: u32) -> Result<SearchPage, String>;
+}
+
+/// Fetch every page for one site request until the last page’s last listing.
+pub fn collect_listings(
+    request: &ScanRequest,
+    source: &mut impl PageSource,
+) -> Result<Vec<Listing>, String> {
+    let mut listings = Vec::new();
+    let mut page = 1u32;
+    loop {
+        let search_page = source.fetch_page(request, page)?;
+        let done = search_page.is_last || search_page.listings.is_empty();
+        listings.extend(search_page.listings);
+        if done {
+            break;
+        }
+        page += 1;
+    }
+    Ok(listings)
+}
+
+pub struct PaginatingScanner<S> {
+    pub source: S,
+    pub listings: Vec<Listing>,
+}
+
+impl<S: PageSource> PaginatingScanner<S> {
+    pub fn new(source: S) -> Self {
+        Self {
+            source,
+            listings: Vec::new(),
+        }
+    }
+
+    pub fn listings_for<'a>(&'a self, site: &str) -> Vec<&'a Listing> {
+        self.listings
+            .iter()
+            .filter(|listing| listing.site == site)
+            .collect()
+    }
+}
+
+impl<S: PageSource> SiteScanner for PaginatingScanner<S> {
+    fn scan(&mut self, request: &ScanRequest) -> Result<(), String> {
+        let fetched = collect_listings(request, &mut self.source)?;
+        self.listings.extend(fetched);
+        Ok(())
+    }
+}
+
 pub trait SiteScanner {
     fn scan(&mut self, request: &ScanRequest) -> Result<(), String>;
 }
@@ -235,5 +299,129 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[derive(Default)]
+    struct FakePageSource {
+        pages: std::collections::HashMap<(String, u32), SearchPage>,
+        fetches: Vec<(String, u32, Vec<String>)>,
+    }
+
+    impl FakePageSource {
+        fn add(&mut self, site: &str, page: u32, is_last: bool, urls: &[&str]) {
+            self.pages.insert(
+                (site.to_string(), page),
+                SearchPage {
+                    listings: urls
+                        .iter()
+                        .map(|url| Listing {
+                            site: site.to_string(),
+                            url: (*url).to_string(),
+                        })
+                        .collect(),
+                    is_last,
+                },
+            );
+        }
+    }
+
+    impl PageSource for FakePageSource {
+        fn fetch_page(
+            &mut self,
+            request: &ScanRequest,
+            page: u32,
+        ) -> Result<SearchPage, String> {
+            self.fetches
+                .push((request.site.clone(), page, request.places.clone()));
+            self.pages
+                .get(&(request.site.clone(), page))
+                .cloned()
+                .ok_or_else(|| format!("missing page {page} for {}", request.site))
+        }
+    }
+
+    #[test]
+    fn site_scan_continues_until_last_page_last_listing() {
+        let mut source = FakePageSource::default();
+        source.add(
+            "Kleinanzeigen",
+            1,
+            false,
+            &["https://ka.example/1", "https://ka.example/2"],
+        );
+        source.add("Kleinanzeigen", 2, true, &["https://ka.example/3"]);
+        source.add("eBay", 1, false, &["https://eb.example/1"]);
+        source.add("eBay", 2, true, &["https://eb.example/2"]);
+        source.add(
+            "Vinted",
+            1,
+            true,
+            &["https://vi.example/1", "https://vi.example/2"],
+        );
+
+        let places = vec!["Karlsruhe".to_string(), "Rheinfelden".to_string()];
+        let mut scanner = PaginatingScanner::new(source);
+        run("Fahrrad", &places, &mut scanner).unwrap();
+
+        let ka: Vec<&str> = scanner
+            .listings_for("Kleinanzeigen")
+            .iter()
+            .map(|l| l.url.as_str())
+            .collect();
+        assert_eq!(
+            ka,
+            [
+                "https://ka.example/1",
+                "https://ka.example/2",
+                "https://ka.example/3"
+            ],
+            "Kleinanzeigen must not stop after the first listing"
+        );
+
+        let eb: Vec<&str> = scanner
+            .listings_for("eBay")
+            .iter()
+            .map(|l| l.url.as_str())
+            .collect();
+        assert_eq!(eb, ["https://eb.example/1", "https://eb.example/2"]);
+
+        let vi: Vec<&str> = scanner
+            .listings_for("Vinted")
+            .iter()
+            .map(|l| l.url.as_str())
+            .collect();
+        assert_eq!(vi, ["https://vi.example/1", "https://vi.example/2"]);
+
+        let fetches = &scanner.source.fetches;
+        let ka_fetches: Vec<&(String, u32, Vec<String>)> = fetches
+            .iter()
+            .filter(|(site, _, _)| site == "Kleinanzeigen")
+            .collect();
+        assert_eq!(
+            ka_fetches.len(),
+            2,
+            "Kleinanzeigen must fetch through the last page"
+        );
+        for (_, _, fetched_places) in ka_fetches {
+            assert_eq!(
+                fetched_places,
+                &places,
+                "Kleinanzeigen pagination uses those places"
+            );
+        }
+        for (site, _, fetched_places) in fetches {
+            if site == "eBay" || site == "Vinted" {
+                assert!(
+                    fetched_places.is_empty(),
+                    "{site} pagination must not use places"
+                );
+            }
+        }
+        assert!(
+            fetches
+                .iter()
+                .any(|(site, page, _)| site == "eBay" && *page == 2),
+            "eBay must continue past page 1"
+        );
     }
 }

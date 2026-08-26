@@ -131,8 +131,45 @@ pub fn scan_requests(term: &str, places: &[String]) -> Vec<ScanRequest> {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Listing {
-    pub site: String,
+    pub title: String,
+    pub price: String,
     pub url: String,
+    pub site: String,
+    pub search_term: String,
+    pub first_seen: String,
+    pub last_seen: String,
+    /// Image URLs taken from the listing page, first image first.
+    pub product_images: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ListingPage {
+    pub title: String,
+    pub price: String,
+    pub product_images: Vec<String>,
+}
+
+pub fn utc_ymd(secs: u64) -> String {
+    // Howard Hinnant civil-from-days (Unix epoch).
+    let z = (secs / 86400) as i64 + 719468;
+    let era = if z >= 0 { z } else { z - 146096 } / 146097;
+    let doe = (z - era * 146097) as u64;
+    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
+    let y = yoe as i64 + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 36524);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    let y = if m <= 2 { y + 1 } else { y };
+    format!("{y:04}-{m:02}-{d:02}")
+}
+
+pub fn today_date() -> String {
+    let secs = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    utc_ymd(secs)
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -157,6 +194,7 @@ pub struct SearchPage {
 
 pub trait PageSource {
     fn fetch_page(&mut self, request: &ScanRequest, page: u32) -> Result<SearchPage, String>;
+    fn fetch_listing_page(&mut self, url: &str) -> Result<ListingPage, String>;
 }
 
 /// In-memory listing store. Saves are visible immediately to other handles.
@@ -214,8 +252,22 @@ pub fn collect_listings(
     loop {
         let search_page = source.fetch_page(request, page)?;
         let done = search_page.is_last || search_page.listings.is_empty();
+        let seen = today_date();
         for listing in search_page.listings {
-            store.save(listing);
+            let page = source.fetch_listing_page(&listing.url)?;
+            if page.product_images.is_empty() {
+                return Err(format!("listing page {} has no product image", listing.url));
+            }
+            store.save(Listing {
+                title: page.title,
+                price: page.price,
+                url: listing.url,
+                site: listing.site,
+                search_term: request.term.clone(),
+                first_seen: seen.clone(),
+                last_seen: seen.clone(),
+                product_images: page.product_images,
+            });
         }
         if done {
             break;
@@ -390,6 +442,7 @@ mod tests {
     #[derive(Default)]
     struct FakePageSource {
         pages: std::collections::HashMap<(String, u32), SearchPage>,
+        listing_pages: std::collections::HashMap<String, ListingPage>,
         fetches: Vec<(String, u32, Vec<String>)>,
     }
 
@@ -401,13 +454,32 @@ mod tests {
                     listings: urls
                         .iter()
                         .map(|url| Listing {
-                            site: site.to_string(),
+                            title: String::new(),
+                            price: String::new(),
                             url: (*url).to_string(),
+                            site: site.to_string(),
+                            search_term: String::new(),
+                            first_seen: String::new(),
+                            last_seen: String::new(),
+                            product_images: Vec::new(),
                         })
                         .collect(),
                     is_last,
                 },
             );
+            for url in urls {
+                self.listing_pages.entry((*url).to_string()).or_insert_with(|| {
+                    ListingPage {
+                        title: format!("title for {url}"),
+                        price: "1".to_string(),
+                        product_images: vec![format!("{url}/photo.jpg")],
+                    }
+                });
+            }
+        }
+
+        fn set_listing_page(&mut self, url: &str, page: ListingPage) {
+            self.listing_pages.insert(url.to_string(), page);
         }
     }
 
@@ -423,6 +495,13 @@ mod tests {
                 .get(&(request.site.clone(), page))
                 .cloned()
                 .ok_or_else(|| format!("missing page {page} for {}", request.site))
+        }
+
+        fn fetch_listing_page(&mut self, url: &str) -> Result<ListingPage, String> {
+            self.listing_pages
+                .get(url)
+                .cloned()
+                .ok_or_else(|| format!("missing listing page for {url}"))
         }
     }
 
@@ -535,6 +614,10 @@ mod tests {
                 return Err(format!("{} fetch failed", request.site));
             }
             self.inner.fetch_page(request, page)
+        }
+
+        fn fetch_listing_page(&mut self, url: &str) -> Result<ListingPage, String> {
+            self.inner.fetch_listing_page(url)
         }
     }
 
@@ -680,5 +763,80 @@ mod tests {
             !failures[0].run_id.is_empty(),
             "failure record must identify the run"
         );
+    }
+
+    #[test]
+    fn stored_finding_has_title_price_url_site_term_dates_and_listing_page_image() {
+        let mut source = FakePageSource::default();
+        source.add("Kleinanzeigen", 1, true, &["https://ka.example/listing-1"]);
+        source.add("eBay", 1, true, &["https://eb.example/listing-1"]);
+        source.add("Vinted", 1, true, &["https://vi.example/listing-1"]);
+        source.set_listing_page(
+            "https://ka.example/listing-1",
+            ListingPage {
+                title: "City bike".to_string(),
+                price: "120 €".to_string(),
+                product_images: vec![
+                    "https://ka.example/listing-1/img-1.jpg".to_string(),
+                    "https://ka.example/listing-1/img-2.jpg".to_string(),
+                ],
+            },
+        );
+        source.set_listing_page(
+            "https://eb.example/listing-1",
+            ListingPage {
+                title: "Road bike".to_string(),
+                price: "200 €".to_string(),
+                product_images: vec!["https://eb.example/listing-1/photo.jpg".to_string()],
+            },
+        );
+        source.set_listing_page(
+            "https://vi.example/listing-1",
+            ListingPage {
+                title: "Kids bike".to_string(),
+                price: "40 €".to_string(),
+                product_images: vec!["https://vi.example/listing-1/cover.jpg".to_string()],
+            },
+        );
+
+        let mut scanner = PaginatingScanner::new(source);
+        run("Fahrrad", &[], &mut scanner).unwrap();
+
+        let findings = scanner.store.listings();
+        assert_eq!(findings.len(), 3);
+
+        let ka = findings
+            .iter()
+            .find(|f| f.url == "https://ka.example/listing-1")
+            .expect("Kleinanzeigen finding");
+        assert_eq!(ka.title, "City bike");
+        assert_eq!(ka.price, "120 €");
+        assert_eq!(ka.site, "Kleinanzeigen");
+        assert_eq!(ka.search_term, "Fahrrad");
+        assert_eq!(ka.first_seen, today_date());
+        assert_eq!(ka.last_seen, ka.first_seen);
+        assert_eq!(
+            ka.product_images[0],
+            "https://ka.example/listing-1/img-1.jpg",
+            "first product image must come from the listing page"
+        );
+
+        for finding in &findings {
+            assert!(!finding.title.is_empty(), "title required");
+            assert!(!finding.price.is_empty(), "price required");
+            assert!(!finding.url.is_empty(), "URL required");
+            assert!(!finding.site.is_empty(), "site required");
+            assert_eq!(finding.search_term, "Fahrrad");
+            assert!(
+                finding.first_seen.len() == 10 && finding.first_seen.chars().nth(4) == Some('-'),
+                "first-seen must be a date: {}",
+                finding.first_seen
+            );
+            assert_eq!(finding.last_seen, finding.first_seen);
+            assert!(
+                !finding.product_images.is_empty(),
+                "at least the first product image from the listing page"
+            );
+        }
     }
 }

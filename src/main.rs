@@ -4,7 +4,7 @@ use std::path::PathBuf;
 
 use lens_search::{
     encode_failure_line, parse_failure_line, parse_run_args, run, scan_requests, FetchFailure,
-    PageSource, PaginatingScanner, ScanRequest, SearchPage, SiteScanner,
+    ListingPage, PageSource, PaginatingScanner, ScanRequest, SearchPage, SiteScanner,
 };
 
 struct CliPageSource {
@@ -24,6 +24,10 @@ impl PageSource for CliPageSource {
             listings: Vec::new(),
             is_last: true,
         })
+    }
+
+    fn fetch_listing_page(&mut self, url: &str) -> Result<ListingPage, String> {
+        Err(format!("no listing page for {url}"))
     }
 }
 

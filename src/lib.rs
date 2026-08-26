@@ -143,6 +143,21 @@ pub struct Listing {
     pub product_images: Vec<String>,
 }
 
+/// Inclusive first-seen / last-seen window. Dates are `YYYY-MM-DD`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DateRange {
+    pub start: String,
+    pub end: String,
+}
+
+pub fn finding_dates_in_range(listing: &Listing, range: &DateRange) -> bool {
+    date_in_range(&listing.first_seen, range) && date_in_range(&listing.last_seen, range)
+}
+
+fn date_in_range(date: &str, range: &DateRange) -> bool {
+    date >= range.start.as_str() && date <= range.end.as_str()
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ListingPage {
     pub title: String,
@@ -204,21 +219,40 @@ pub struct MemoryStore {
     listings: Rc<RefCell<Vec<Listing>>>,
     failures: Rc<RefCell<Vec<FetchFailure>>>,
     fetched_urls: Rc<RefCell<HashSet<String>>>,
+    date_range: Rc<RefCell<Option<DateRange>>>,
 }
 
 impl MemoryStore {
+    pub fn set_date_range(&self, range: DateRange) {
+        *self.date_range.borrow_mut() = Some(range);
+        self.drop_outside_date_range();
+    }
+
+    fn drop_outside_date_range(&self) {
+        let range = self.date_range.borrow().clone();
+        let Some(range) = range else {
+            return;
+        };
+        self.listings
+            .borrow_mut()
+            .retain(|listing| finding_dates_in_range(listing, &range));
+    }
+
     pub fn save(&self, listing: Listing) {
-        let mut listings = self.listings.borrow_mut();
-        if let Some(existing) = listings.iter_mut().find(|row| row.url == listing.url) {
-            existing.title = listing.title;
-            existing.price = listing.price;
-            existing.site = listing.site;
-            existing.search_term = listing.search_term;
-            existing.last_seen = listing.last_seen;
-            existing.product_images = listing.product_images;
-        } else {
-            listings.push(listing);
+        {
+            let mut listings = self.listings.borrow_mut();
+            if let Some(existing) = listings.iter_mut().find(|row| row.url == listing.url) {
+                existing.title = listing.title;
+                existing.price = listing.price;
+                existing.site = listing.site;
+                existing.search_term = listing.search_term;
+                existing.last_seen = listing.last_seen;
+                existing.product_images = listing.product_images;
+            } else {
+                listings.push(listing);
+            }
         }
+        self.drop_outside_date_range();
     }
 
     pub fn listings(&self) -> Vec<Listing> {
@@ -247,6 +281,7 @@ impl MemoryStore {
         self.listings.borrow_mut().retain(|listing| {
             listing.search_term != term || fetched.contains(&listing.url)
         });
+        self.drop_outside_date_range();
     }
 }
 
@@ -995,5 +1030,81 @@ mod tests {
             "last-seen must update for URLs still found"
         );
         assert_ne!(kept.last_seen, "2020-01-01");
+    }
+
+    fn listing_with_dates(url: &str, first_seen: &str, last_seen: &str) -> Listing {
+        Listing {
+            title: url.to_string(),
+            price: "1".to_string(),
+            url: url.to_string(),
+            site: "Kleinanzeigen".to_string(),
+            search_term: "Fahrrad".to_string(),
+            first_seen: first_seen.to_string(),
+            last_seen: last_seen.to_string(),
+            product_images: vec![format!("{url}/photo.jpg")],
+        }
+    }
+
+    #[test]
+    fn chosen_date_range_does_not_keep_findings_outside_range() {
+        let store = MemoryStore::default();
+        store.save(listing_with_dates(
+            "https://example.com/in",
+            "2024-06-01",
+            "2024-06-10",
+        ));
+        store.save(listing_with_dates(
+            "https://example.com/before",
+            "2023-12-31",
+            "2023-12-31",
+        ));
+        store.save(listing_with_dates(
+            "https://example.com/after",
+            "2025-01-01",
+            "2025-01-01",
+        ));
+
+        store.set_date_range(DateRange {
+            start: "2024-01-01".to_string(),
+            end: "2024-12-31".to_string(),
+        });
+
+        let urls: Vec<String> = store.listings().into_iter().map(|listing| listing.url).collect();
+        assert_eq!(
+            urls,
+            ["https://example.com/in"],
+            "findings whose dates fall outside the chosen range must not be kept"
+        );
+
+        store.save(listing_with_dates(
+            "https://example.com/also-outside",
+            "2022-01-01",
+            "2022-01-02",
+        ));
+        let urls: Vec<String> = store.listings().into_iter().map(|listing| listing.url).collect();
+        assert_eq!(
+            urls,
+            ["https://example.com/in"],
+            "a later save outside the range must not be kept"
+        );
+
+        let mut source = FakePageSource::default();
+        source.add("Kleinanzeigen", 1, true, &["https://ka.example/today"]);
+        source.add("eBay", 1, true, &[]);
+        source.add("Vinted", 1, true, &[]);
+        let fetch_store = MemoryStore::default();
+        fetch_store.set_date_range(DateRange {
+            start: "2000-01-01".to_string(),
+            end: "2000-01-02".to_string(),
+        });
+        let mut scanner = PaginatingScanner {
+            source,
+            store: fetch_store.clone(),
+        };
+        run("Fahrrad", &[], &mut scanner).unwrap();
+        assert!(
+            fetch_store.listings().is_empty(),
+            "a fetch whose dates fall outside the chosen range must not be kept"
+        );
     }
 }

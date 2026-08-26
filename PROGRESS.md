@@ -14,6 +14,6 @@ Live board on `auto-feature/marketplace-scan-store`. Do not edit `requirements/m
 | 6 | Each stored finding has title, price, URL, site, search term, first-seen date, last-seen date, and at least the first product image from that listing’s page. | done |
 | 7 | Two fetches that share the same listing URL produce one stored row, even if the search terms differ. | done |
 | 8 | A recheck of a term removes stored findings for that term whose URLs are not in the new fetch. URLs still found stay, with last-seen updated. | done |
-| 9 | A chosen date range is applied: findings whose dates fall outside that range are not kept. | todo |
+| 9 | A chosen date range is applied: findings whose dates fall outside that range are not kept. | done |
 | 10 | The terminal can list stored findings sorted by price. | todo |
 | 11 | Live fetch works: a real run against Kleinanzeigen, eBay, and Vinted persists real listings (or a stored failure if a site fetch fails), not only locally invented rows. | todo |

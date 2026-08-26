@@ -14,4 +14,4 @@ Live board on `auto-feature/orchestrator`. Do not edit `requirements/orchestrato
 | 6 | If two worktrees conflict on merge, the orchestrator does not invent a spec. It records the conflict as blocked in `ORCHESTRATION.md` and either retries a serial merge after the other subtask lands or opens `GAPS.md` / missing-req per existing rules (unmet test vs thin spec). It does not force-merge through conflicts. | done |
 | 7 | `ORCHESTRATION.md` exists on `auto-feature/<slug>` during the cycle and lists each subtask with state `running`, `done`, or `blocked`, updated as subtasks start and finish. | done |
 | 8 | Unmet specified tests of the product RequirementSet still produce `GAPS.md` on `auto-feature/<slug>` (hardener path unchanged). A spec too thin to split or implement without guessing still opens `missing-req/<slug>` with `MISSING.md` only. | done |
-| 9 | Bots still do not merge the auto-feature MR to `main`. `CYCLE` still hashes the RequirementSet tree as today. | todo |
+| 9 | Bots still do not merge the auto-feature MR to `main`. `CYCLE` still hashes the RequirementSet tree as today. | done |

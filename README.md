@@ -12,7 +12,7 @@ Personal product repo. `main` holds the product and merged RequirementSets. Agen
 | `auto-fix/<slug>` | hardener | Child of the feature branch only. Merges back into the same MR |
 | `missing-req/<slug>` | bot + you | Halt. `MISSING.md` only. Then you specify and push `req/<slug>` (new CYCLE) |
 
-Push `req/<slug>` (when `missing-req/<slug>` is not open) creates `auto-feature/<slug>` from `main` plus `requirements/<slug>/`, writes `CYCLE` (hash of that tree), runs an **orchestrator** (not one coder for the whole set), and opens or updates **one** merge request `auto-feature/<slug>` → `main`. The orchestrator splits `specified-tests.md` into subtasks and runs subtask coders in parallel git worktrees, then merges them onto `auto-feature/<slug>`. Progress is in `ORCHESTRATION.md`. Bots never merge that MR. You freeze: approve and merge when GAPS is empty, missing-req is closed, and the tree hash still equals `CYCLE`.
+Push `req/<slug>` (when `missing-req/<slug>` is not open) creates `auto-feature/<slug>` from `main` plus `requirements/<slug>/`, writes `CYCLE` (hash of that tree), runs an **orchestrator** (not one coder for the whole set), and opens or updates **one** merge request `auto-feature/<slug>` → `main`. The orchestrator splits `specified-tests.md` into subtasks and runs the subtask coders **sequentially on `auto-feature/<slug>` itself**, each on the accumulated code with a spec-isolated prompt (its one specified test only). After each subtask an executable verify gate (`scripts/verify-subtask.sh`: build + whole accumulated test suite) must pass before the subtask counts as done; on red the coder is re-invoked once with the failure output (2 attempts total), and if still red the test is recorded in `GAPS.md` and the loop continues. Every verified subtask is committed and pushed immediately with the `PROGRESS.md` board updated in the same commit, so a restarted run resumes from the board. Bots never merge that MR. You freeze: approve and merge when GAPS is empty, missing-req is closed, and the tree hash still equals `CYCLE`.
 
 `GAPS.md` means a stated specified test is not met (implementation hole). `MISSING.md` means the spec is too thin (specify again; do not invent Gherkin).
 
@@ -20,9 +20,10 @@ Push `req/<slug>` (when `missing-req/<slug>` is not open) creates `auto-feature/
 flowchart TD
   R[reviewer] --> S["specify /specify"]
   S -->|push req/slug| AF[auto-feature/slug]
-  AF --> O[orchestrator plus parallel subtask coders]
-  O --> C[subtask coder]
-  C -->|GAPS.md stated spec unmet| AX[auto-fix/slug]
+  AF --> O[orchestrator sequential subtask loop]
+  O --> C[subtask coder then verify gate build plus tests]
+  C -->|verify green commit push| O
+  C -->|verify red twice GAPS.md| AX[auto-fix/slug]
   AX --> H[hardener]
   H -->|merge to feature same MR| AF
   C -->|spec thin or missing| MR[missing-req/slug]

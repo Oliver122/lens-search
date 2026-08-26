@@ -9,15 +9,11 @@ grep -q 'install-cursor-cli.sh' "$ROOT/.github/workflows/auto-fix.yml"
 
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
-make_repo "$tmp/repo"
-cd "$tmp/repo"
 slug=keycheck
-git checkout -b "req/${slug}" >/dev/null
-mkdir -p "requirements/${slug}"
-echo in > "requirements/${slug}/overview.md"
-echo t > "requirements/${slug}/specified-tests.md"
-git add requirements && git commit -m spec >/dev/null
-./scripts/open-auto-feature.sh "$slug"
-unset CURSOR_API_KEY || true
-assert_fail "coder without key" ./scripts/run-coder.sh "$slug"
+make_feature_repo "$tmp/repo" "$slug"
+
+unset CURSOR_API_KEY AGENT_BIN || true
+assert_fail "subtask coder without key" ./scripts/run-subtask-coder.sh "$slug" 1
+# The coder is the sole owner of the env checks; its env exit must abort the
+# orchestrator (not be counted as a red attempt).
 assert_fail "orchestrator without key" ./scripts/run-orchestrator.sh "$slug"

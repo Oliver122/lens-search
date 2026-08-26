@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
 # Print one subtask coder prompt: overview + this subtask only (no sibling tests or prompts).
+# Optional failure-log: retry prompt appends a bounded tail of the verify failure.
 set -euo pipefail
 
 slug="${1:?slug required}"
 n="${2:?subtask number required}"
+failure_log="${3:-}"
 root="$(git rev-parse --show-toplevel)"
 req="requirements/${slug}"
 overview="${root}/${req}/overview.md"
@@ -33,6 +35,11 @@ if [[ "$found" -ne 1 ]]; then
   exit 1
 fi
 
+if [[ -n "$failure_log" && ! -f "$failure_log" ]]; then
+  echo "build-subtask-prompt: missing failure log ${failure_log}" >&2
+  exit 1
+fi
+
 cat "$template"
 echo
 echo "Slug: ${slug}"
@@ -46,3 +53,11 @@ echo "--- your subtask (specified test ${n} only) ---"
 echo "${n}. ${text}"
 echo
 echo "Do not include or implement any other numbered specified test."
+
+if [[ -n "$failure_log" ]]; then
+  echo
+  echo "--- previous attempt failed verification (output tail) ---"
+  tail -n 100 "$failure_log"
+  echo
+  echo "Your previous attempt did not verify: the build or test suite failed as shown above. Fix that failure; the whole test suite must pass."
+fi

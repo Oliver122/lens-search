@@ -1,17 +1,19 @@
-# Progress — orchestrator
+# Progress — marketplace-scan-store
 
-States: `todo` | `in-progress` | `done` | `blocked` | `gap`
+States: `todo` | `in-progress` | `done` | `gap`
 
-Live board on `auto-feature/orchestrator`. Do not edit `requirements/orchestrator/` to record status.
+Live board on `auto-feature/marketplace-scan-store`. Do not edit `requirements/marketplace-scan-store/` to record status.
 
 | # | specified test | state |
 |---|---|---|
-| 1 | Push of `req/<slug>` (when `missing-req/<slug>` is not open) still runs `openAutoFeature` (CYCLE, `auto-feature/<slug>`, one MR to `main`). The next agent in that job is an orchestrator, not a single coder for the whole RequirementSet. | done |
-| 2 | The orchestrator splits `requirements/<slug>/specified-tests.md` into two or more subtasks when that file has more than one specified test. A RequirementSet with a single specified test may yield one subtask. | done |
-| 3 | Each subtask coder is a separate agent invocation. Its prompt contains that subtask, `overview.md`, and not the transcripts or full prompts of sibling subtasks. | done |
-| 4 | Subtask coders run in parallel in distinct git worktrees. They do not share one working tree while running. | done |
-| 5 | When a subtask coder finishes, the orchestrator merges its worktree into `auto-feature/<slug>`. The MR head is that branch, not a worktree branch left unmerged. | done |
-| 6 | If two worktrees conflict on merge, the orchestrator does not invent a spec. It records the conflict as blocked in `ORCHESTRATION.md` and either retries a serial merge after the other subtask lands or opens `GAPS.md` / missing-req per existing rules (unmet test vs thin spec). It does not force-merge through conflicts. | done |
-| 7 | `ORCHESTRATION.md` exists on `auto-feature/<slug>` during the cycle and lists each subtask with state `running`, `done`, or `blocked`, updated as subtasks start and finish. | done |
-| 8 | Unmet specified tests of the product RequirementSet still produce `GAPS.md` on `auto-feature/<slug>` (hardener path unchanged). A spec too thin to split or implement without guessing still opens `missing-req/<slug>` with `MISSING.md` only. | done |
-| 9 | Bots still do not merge the auto-feature MR to `main`. `CYCLE` still hashes the RequirementSet tree as today. | done |
+| 1 | From the terminal, a run accepts exactly one search term and then scans Kleinanzeigen, then eBay, then Vinted, without requiring login. | done |
+| 2 | The same run accepts a list of places used only for Kleinanzeigen. eBay and Vinted in that run are not filtered by those places. Two places (e.g. Karlsruhe and Rheinfelden) are accepted in one Kleinanzeigen scan. | done |
+| 3 | A site scan continues until the last page’s last listing for that term (and for Kleinanzeigen, those places). It does not stop after the first listing. | done |
+| 4 | Each listing is in the store as soon as it is fetched. If eBay or Vinted then fails, Kleinanzeigen (and any earlier successful site) listings from that run remain readable. | done |
+| 5 | When a site fetch fails, a failure record for that site, term, and run is stored and can be read from the terminal after the run. | done |
+| 6 | Each stored finding has title, price, URL, site, search term, first-seen date, last-seen date, and at least the first product image from that listing’s page. | done |
+| 7 | Two fetches that share the same listing URL produce one stored row, even if the search terms differ. | done |
+| 8 | A recheck of a term removes stored findings for that term whose URLs are not in the new fetch. URLs still found stay, with last-seen updated. | done |
+| 9 | A chosen date range is applied: findings whose dates fall outside that range are not kept. | done |
+| 10 | The terminal can list stored findings sorted by price. | done |
+| 11 | Live fetch works: a real run against Kleinanzeigen, eBay, and Vinted persists real listings (or a stored failure if a site fetch fails), not only locally invented rows. | done |

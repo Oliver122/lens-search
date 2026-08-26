@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Test stub for `agent`. Writes a file in the worktree and records the tree path.
+# Test stub for `agent`. Writes a marker file on the checkout and records the
+# prompt and a START/END trace line per invocation.
 set -euo pipefail
 
 prompt="${*: -1}"
@@ -21,11 +22,7 @@ fi
 
 sleep "${ORCH_AGENT_SLEEP:-0}"
 
-if [[ "${ORCH_AGENT_MODE:-unique}" == "conflict" ]]; then
-  echo "from-subtask-${n}-$$" > "${tree}/SAME.txt"
-else
-  echo "ok-${n}" > "${tree}/subtask-${n}.txt"
-fi
+echo "ok-${n}" > "${tree}/subtask-${n}.txt"
 
 if [[ -n "${ORCH_TRACE:-}" ]]; then
   echo "END ${n} ${tree} $$" >> "$ORCH_TRACE"

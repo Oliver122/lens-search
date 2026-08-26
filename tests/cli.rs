@@ -1,7 +1,20 @@
 use std::process::Command;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 fn bin() -> Command {
     Command::new(env!("CARGO_BIN_EXE_lens-search"))
+}
+
+fn unique_store() -> std::path::PathBuf {
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    std::env::temp_dir().join(format!(
+        "lens-search-failures-{}-{}",
+        std::process::id(),
+        nanos
+    ))
 }
 
 #[test]
@@ -67,4 +80,47 @@ fn terminal_run_accepts_places_only_for_kleinanzeigen() {
     assert!(lines[2].starts_with("Vinted "));
     assert!(!lines[2].contains("Karlsruhe"));
     assert!(!lines[2].contains("Rheinfelden"));
+}
+
+#[test]
+fn terminal_reads_stored_site_fetch_failure_after_run() {
+    let store = unique_store();
+    let _ = std::fs::remove_file(&store);
+
+    let run_output = bin()
+        .args(["run", "Fahrrad"])
+        .env("LENS_SEARCH_STORE", &store)
+        .env("LENS_SEARCH_FAIL_SITE", "eBay")
+        .output()
+        .expect("run binary");
+    assert!(
+        !run_output.status.success(),
+        "a failed site fetch should fail the run"
+    );
+
+    let failures = bin()
+        .args(["failures"])
+        .env("LENS_SEARCH_STORE", &store)
+        .output()
+        .expect("failures command");
+    assert!(
+        failures.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&failures.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&failures.stdout);
+    let line = stdout
+        .lines()
+        .next()
+        .expect("terminal should print the stored failure");
+    let parts: Vec<&str> = line.split_whitespace().collect();
+    assert!(
+        parts.len() >= 3,
+        "failure line must include site, term, and run: {line}"
+    );
+    assert_eq!(parts[0], "eBay");
+    assert_eq!(parts[1], "Fahrrad");
+    assert!(!parts[2].is_empty(), "run id must be present");
+
+    let _ = std::fs::remove_file(&store);
 }

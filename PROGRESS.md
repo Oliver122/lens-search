@@ -10,7 +10,7 @@ Live board on `auto-feature/marketplace-scan-store`. Do not edit `requirements/m
 | 2 | The same run accepts a list of places used only for Kleinanzeigen. eBay and Vinted in that run are not filtered by those places. Two places (e.g. Karlsruhe and Rheinfelden) are accepted in one Kleinanzeigen scan. | done |
 | 3 | A site scan continues until the last page’s last listing for that term (and for Kleinanzeigen, those places). It does not stop after the first listing. | done |
 | 4 | Each listing is in the store as soon as it is fetched. If eBay or Vinted then fails, Kleinanzeigen (and any earlier successful site) listings from that run remain readable. | done |
-| 5 | When a site fetch fails, a failure record for that site, term, and run is stored and can be read from the terminal after the run. | todo |
+| 5 | When a site fetch fails, a failure record for that site, term, and run is stored and can be read from the terminal after the run. | done |
 | 6 | Each stored finding has title, price, URL, site, search term, first-seen date, last-seen date, and at least the first product image from that listing’s page. | todo |
 | 7 | Two fetches that share the same listing URL produce one stored row, even if the search terms differ. | todo |
 | 8 | A recheck of a term removes stored findings for that term whose URLs are not in the new fetch. URLs still found stay, with last-seen updated. | todo |

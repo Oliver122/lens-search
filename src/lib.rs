@@ -2,6 +2,7 @@
 
 use std::cell::RefCell;
 use std::rc::Rc;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 pub const SITES_IN_ORDER: [&str; 3] = ["Kleinanzeigen", "eBay", "Vinted"];
 
@@ -135,6 +136,20 @@ pub struct Listing {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FetchFailure {
+    pub site: String,
+    pub term: String,
+    pub run_id: String,
+}
+
+pub fn new_run_id() -> String {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_nanos().to_string())
+        .unwrap_or_else(|_| "0".to_string())
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SearchPage {
     pub listings: Vec<Listing>,
     pub is_last: bool,
@@ -148,6 +163,7 @@ pub trait PageSource {
 #[derive(Clone, Default)]
 pub struct MemoryStore {
     listings: Rc<RefCell<Vec<Listing>>>,
+    failures: Rc<RefCell<Vec<FetchFailure>>>,
 }
 
 impl MemoryStore {
@@ -158,6 +174,33 @@ impl MemoryStore {
     pub fn listings(&self) -> Vec<Listing> {
         self.listings.borrow().clone()
     }
+
+    pub fn save_failure(&self, failure: FetchFailure) {
+        self.failures.borrow_mut().push(failure);
+    }
+
+    pub fn failures(&self) -> Vec<FetchFailure> {
+        self.failures.borrow().clone()
+    }
+}
+
+pub fn encode_failure_line(failure: &FetchFailure) -> String {
+    format!("{}\t{}\t{}", failure.run_id, failure.site, failure.term)
+}
+
+pub fn parse_failure_line(line: &str) -> Option<FetchFailure> {
+    let mut parts = line.splitn(3, '\t');
+    let run_id = parts.next()?.to_string();
+    let site = parts.next()?.to_string();
+    let term = parts.next()?.to_string();
+    if run_id.is_empty() || site.is_empty() {
+        return None;
+    }
+    Some(FetchFailure {
+        site,
+        term,
+        run_id,
+    })
 }
 
 /// Fetch every page for one site request until the last page’s last listing.
@@ -208,10 +251,24 @@ impl<S: PageSource> SiteScanner for PaginatingScanner<S> {
     fn scan(&mut self, request: &ScanRequest) -> Result<(), String> {
         collect_listings(request, &mut self.source, &self.store)
     }
+
+    fn note_failure(&mut self, failure: FetchFailure) {
+        self.store.save_failure(failure);
+    }
+
+    fn fetch_failures(&self) -> Vec<FetchFailure> {
+        self.store.failures()
+    }
 }
 
 pub trait SiteScanner {
     fn scan(&mut self, request: &ScanRequest) -> Result<(), String>;
+
+    fn note_failure(&mut self, _failure: FetchFailure) {}
+
+    fn fetch_failures(&self) -> Vec<FetchFailure> {
+        Vec::new()
+    }
 }
 
 /// Scan Kleinanzeigen, then eBay, then Vinted. Public search only (no login).
@@ -219,11 +276,19 @@ pub fn run(term: &str, places: &[String], scanner: &mut impl SiteScanner) -> Res
     if term.is_empty() {
         return Err(RunError::EmptyTerm.to_string());
     }
+    let run_id = new_run_id();
     for request in scan_requests(term, places) {
         if request.requires_login() {
             return Err(format!("{} scan must not require login", request.site));
         }
-        scanner.scan(&request)?;
+        if let Err(err) = scanner.scan(&request) {
+            scanner.note_failure(FetchFailure {
+                site: request.site.clone(),
+                term: request.term.clone(),
+                run_id,
+            });
+            return Err(err);
+        }
     }
     Ok(())
 }
@@ -583,6 +648,37 @@ mod tests {
                 ("eBay".to_string(), "https://eb.example/1".to_string())
             ],
             "Kleinanzeigen and eBay listings remain readable after Vinted fails"
+        );
+    }
+
+    #[test]
+    fn site_fetch_failure_is_stored_with_site_term_and_run() {
+        let mut inner = FakePageSource::default();
+        inner.add("Kleinanzeigen", 1, true, &["https://ka.example/1"]);
+        inner.add("eBay", 1, true, &["https://eb.example/1"]);
+
+        let store = MemoryStore::default();
+        let source = StoreAwarePageSource {
+            inner,
+            store: store.clone(),
+            urls_in_store_before_fetch: Vec::new(),
+            fail_site: Some("eBay".to_string()),
+        };
+        let mut scanner = PaginatingScanner {
+            source,
+            store: store.clone(),
+        };
+
+        let err = run("Fahrrad", &[], &mut scanner).unwrap_err();
+        assert!(err.contains("eBay"), "run should surface the site failure: {err}");
+
+        let failures = store.failures();
+        assert_eq!(failures.len(), 1, "exactly one failure record for the failed site");
+        assert_eq!(failures[0].site, "eBay");
+        assert_eq!(failures[0].term, "Fahrrad");
+        assert!(
+            !failures[0].run_id.is_empty(),
+            "failure record must identify the run"
         );
     }
 }

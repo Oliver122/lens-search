@@ -1,6 +1,7 @@
 //! Terminal run: one search term, then public scans in site order.
 
 use std::cell::RefCell;
+use std::collections::HashSet;
 use std::rc::Rc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -202,6 +203,7 @@ pub trait PageSource {
 pub struct MemoryStore {
     listings: Rc<RefCell<Vec<Listing>>>,
     failures: Rc<RefCell<Vec<FetchFailure>>>,
+    fetched_urls: Rc<RefCell<HashSet<String>>>,
 }
 
 impl MemoryStore {
@@ -229,6 +231,22 @@ impl MemoryStore {
 
     pub fn failures(&self) -> Vec<FetchFailure> {
         self.failures.borrow().clone()
+    }
+
+    pub fn begin_fetch(&self) {
+        self.fetched_urls.borrow_mut().clear();
+    }
+
+    pub fn note_fetched(&self, url: String) {
+        self.fetched_urls.borrow_mut().insert(url);
+    }
+
+    /// Drop stored findings for `term` whose URLs were not in the fetch just recorded.
+    pub fn remove_unseen_for_term(&self, term: &str) {
+        let fetched = self.fetched_urls.borrow();
+        self.listings.borrow_mut().retain(|listing| {
+            listing.search_term != term || fetched.contains(&listing.url)
+        });
     }
 }
 
@@ -271,13 +289,14 @@ pub fn collect_listings(
             store.save(Listing {
                 title: page.title,
                 price: page.price,
-                url: listing.url,
+                url: listing.url.clone(),
                 site: listing.site,
                 search_term: request.term.clone(),
                 first_seen: seen.clone(),
                 last_seen: seen.clone(),
                 product_images: page.product_images,
             });
+            store.note_fetched(listing.url);
         }
         if done {
             break;
@@ -321,6 +340,14 @@ impl<S: PageSource> SiteScanner for PaginatingScanner<S> {
     fn fetch_failures(&self) -> Vec<FetchFailure> {
         self.store.failures()
     }
+
+    fn begin_run(&mut self) {
+        self.store.begin_fetch();
+    }
+
+    fn finish_run(&mut self, term: &str) {
+        self.store.remove_unseen_for_term(term);
+    }
 }
 
 pub trait SiteScanner {
@@ -331,6 +358,10 @@ pub trait SiteScanner {
     fn fetch_failures(&self) -> Vec<FetchFailure> {
         Vec::new()
     }
+
+    fn begin_run(&mut self) {}
+
+    fn finish_run(&mut self, _term: &str) {}
 }
 
 /// Scan Kleinanzeigen, then eBay, then Vinted. Public search only (no login).
@@ -339,6 +370,7 @@ pub fn run(term: &str, places: &[String], scanner: &mut impl SiteScanner) -> Res
         return Err(RunError::EmptyTerm.to_string());
     }
     let run_id = new_run_id();
+    scanner.begin_run();
     for request in scan_requests(term, places) {
         if request.requires_login() {
             return Err(format!("{} scan must not require login", request.site));
@@ -352,6 +384,7 @@ pub fn run(term: &str, places: &[String], scanner: &mut impl SiteScanner) -> Res
             return Err(err);
         }
     }
+    scanner.finish_run(term);
     Ok(())
 }
 
@@ -878,5 +911,89 @@ mod tests {
             .filter(|listing| listing.url == "https://example.com/shared")
             .collect();
         assert_eq!(matching.len(), 1);
+    }
+
+    #[test]
+    fn recheck_of_term_drops_missing_urls_and_updates_last_seen() {
+        let mut source = FakePageSource::default();
+        source.add(
+            "Kleinanzeigen",
+            1,
+            true,
+            &["https://ka.example/keep", "https://ka.example/drop"],
+        );
+        source.add("eBay", 1, true, &[]);
+        source.add("Vinted", 1, true, &[]);
+
+        let store = MemoryStore::default();
+        let mut scanner = PaginatingScanner {
+            source,
+            store: store.clone(),
+        };
+
+        run("Fahrrad", &[], &mut scanner).unwrap();
+
+        store.save(Listing {
+            title: "other".to_string(),
+            price: "9".to_string(),
+            url: "https://ka.example/other-term".to_string(),
+            site: "Kleinanzeigen".to_string(),
+            search_term: "Lampe".to_string(),
+            first_seen: "2019-06-01".to_string(),
+            last_seen: "2019-06-01".to_string(),
+            product_images: vec!["https://ka.example/other-term/photo.jpg".to_string()],
+        });
+
+        let kept_first_seen = store
+            .listings()
+            .into_iter()
+            .find(|listing| listing.url == "https://ka.example/keep")
+            .expect("keep url from first fetch")
+            .first_seen;
+        store.save(Listing {
+            title: "kept bike".to_string(),
+            price: "10".to_string(),
+            url: "https://ka.example/keep".to_string(),
+            site: "Kleinanzeigen".to_string(),
+            search_term: "Fahrrad".to_string(),
+            first_seen: kept_first_seen.clone(),
+            last_seen: "2020-01-01".to_string(),
+            product_images: vec!["https://ka.example/keep/photo.jpg".to_string()],
+        });
+
+        scanner.source.pages.clear();
+        scanner.source.add("Kleinanzeigen", 1, true, &["https://ka.example/keep"]);
+        scanner.source.add("eBay", 1, true, &[]);
+        scanner.source.add("Vinted", 1, true, &[]);
+
+        run("Fahrrad", &[], &mut scanner).unwrap();
+
+        let listings = store.listings();
+        let urls: Vec<&str> = listings.iter().map(|listing| listing.url.as_str()).collect();
+        assert!(
+            !urls.contains(&"https://ka.example/drop"),
+            "recheck must remove findings for the term whose URLs are not in the new fetch"
+        );
+        assert!(
+            urls.contains(&"https://ka.example/keep"),
+            "URLs still found must stay"
+        );
+        assert!(
+            urls.contains(&"https://ka.example/other-term"),
+            "findings for other terms must stay"
+        );
+
+        let kept = listings
+            .iter()
+            .find(|listing| listing.url == "https://ka.example/keep")
+            .expect("kept listing");
+        assert_eq!(kept.search_term, "Fahrrad");
+        assert_eq!(kept.first_seen, kept_first_seen, "first-seen stays on recheck");
+        assert_eq!(
+            kept.last_seen,
+            today_date(),
+            "last-seen must update for URLs still found"
+        );
+        assert_ne!(kept.last_seen, "2020-01-01");
     }
 }

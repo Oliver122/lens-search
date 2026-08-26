@@ -9,6 +9,14 @@ pub struct ScanRequest {
     pub url: String,
     /// Empty for public search. Login cookies or Authorization must not appear.
     pub headers: Vec<(String, String)>,
+    /// Used only for Kleinanzeigen. Always empty for eBay and Vinted.
+    pub places: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RunArgs {
+    pub term: String,
+    pub places: Vec<String>,
 }
 
 impl ScanRequest {
@@ -24,6 +32,7 @@ pub enum RunError {
     MissingTerm,
     ExtraTerms,
     EmptyTerm,
+    EmptyPlaces,
 }
 
 impl std::fmt::Display for RunError {
@@ -32,27 +41,36 @@ impl std::fmt::Display for RunError {
             RunError::MissingTerm => write!(f, "a run needs exactly one search term"),
             RunError::ExtraTerms => write!(f, "a run accepts exactly one search term"),
             RunError::EmptyTerm => write!(f, "search term must not be empty"),
+            RunError::EmptyPlaces => write!(f, "--places needs at least one place"),
         }
     }
 }
 
 impl std::error::Error for RunError {}
 
-/// Parse `run <term>` from argv after the program name.
-pub fn parse_run_term(args: &[String]) -> Result<String, RunError> {
+/// Parse `run <term> [--places PLACE ...]` from argv after the program name.
+pub fn parse_run_args(args: &[String]) -> Result<RunArgs, RunError> {
     let mut rest = args.iter();
     match rest.next().map(String::as_str) {
         Some("run") => {}
         None | Some(_) => return Err(RunError::MissingTerm),
     }
     let term = rest.next().cloned().ok_or(RunError::MissingTerm)?;
-    if rest.next().is_some() {
-        return Err(RunError::ExtraTerms);
-    }
     if term.is_empty() {
         return Err(RunError::EmptyTerm);
     }
-    Ok(term)
+    let places = match rest.next().map(String::as_str) {
+        None => Vec::new(),
+        Some("--places") => {
+            let places: Vec<String> = rest.cloned().collect();
+            if places.is_empty() {
+                return Err(RunError::EmptyPlaces);
+            }
+            places
+        }
+        Some(_) => return Err(RunError::ExtraTerms),
+    };
+    Ok(RunArgs { term, places })
 }
 
 pub fn public_search_url(site: &str, term: &str) -> String {
@@ -87,14 +105,22 @@ fn nibble(n: u8) -> char {
     b"0123456789ABCDEF"[n as usize] as char
 }
 
-pub fn scan_requests(term: &str) -> Vec<ScanRequest> {
+pub fn scan_requests(term: &str, places: &[String]) -> Vec<ScanRequest> {
     SITES_IN_ORDER
         .iter()
-        .map(|site| ScanRequest {
-            site: (*site).to_string(),
-            term: term.to_string(),
-            url: public_search_url(site, term),
-            headers: Vec::new(),
+        .map(|site| {
+            let site_places = if *site == "Kleinanzeigen" {
+                places.to_vec()
+            } else {
+                Vec::new()
+            };
+            ScanRequest {
+                site: (*site).to_string(),
+                term: term.to_string(),
+                url: public_search_url(site, term),
+                headers: Vec::new(),
+                places: site_places,
+            }
         })
         .collect()
 }
@@ -104,11 +130,11 @@ pub trait SiteScanner {
 }
 
 /// Scan Kleinanzeigen, then eBay, then Vinted. Public search only (no login).
-pub fn run(term: &str, scanner: &mut impl SiteScanner) -> Result<(), String> {
+pub fn run(term: &str, places: &[String], scanner: &mut impl SiteScanner) -> Result<(), String> {
     if term.is_empty() {
         return Err(RunError::EmptyTerm.to_string());
     }
-    for request in scan_requests(term) {
+    for request in scan_requests(term, places) {
         if request.requires_login() {
             return Err(format!("{} scan must not require login", request.site));
         }
@@ -139,10 +165,12 @@ mod tests {
 
     #[test]
     fn run_accepts_exactly_one_search_term() {
-        assert_eq!(parse_run_term(&args(&["run", "Fahrrad"])).unwrap(), "Fahrrad");
-        assert_eq!(parse_run_term(&args(&["run"])), Err(RunError::MissingTerm));
+        let parsed = parse_run_args(&args(&["run", "Fahrrad"])).unwrap();
+        assert_eq!(parsed.term, "Fahrrad");
+        assert!(parsed.places.is_empty());
+        assert_eq!(parse_run_args(&args(&["run"])), Err(RunError::MissingTerm));
         assert_eq!(
-            parse_run_term(&args(&["run", "a", "b"])),
+            parse_run_args(&args(&["run", "a", "b"])),
             Err(RunError::ExtraTerms)
         );
     }
@@ -150,7 +178,7 @@ mod tests {
     #[test]
     fn run_scans_kleinanzeigen_then_ebay_then_vinted_without_login() {
         let mut scanner = RecordingScanner::default();
-        run("Fahrrad", &mut scanner).unwrap();
+        run("Fahrrad", &[], &mut scanner).unwrap();
 
         let sites: Vec<&str> = scanner.calls.iter().map(|c| c.site.as_str()).collect();
         assert_eq!(sites, ["Kleinanzeigen", "eBay", "Vinted"]);
@@ -163,6 +191,49 @@ mod tests {
                 "public search URL for {}",
                 call.site
             );
+        }
+    }
+
+    #[test]
+    fn run_accepts_two_places_only_for_kleinanzeigen() {
+        let parsed = parse_run_args(&args(&[
+            "run",
+            "Fahrrad",
+            "--places",
+            "Karlsruhe",
+            "Rheinfelden",
+        ]))
+        .unwrap();
+        assert_eq!(parsed.term, "Fahrrad");
+        assert_eq!(parsed.places, ["Karlsruhe", "Rheinfelden"]);
+
+        let mut scanner = RecordingScanner::default();
+        run(&parsed.term, &parsed.places, &mut scanner).unwrap();
+
+        let kleinanzeigen: Vec<&ScanRequest> = scanner
+            .calls
+            .iter()
+            .filter(|c| c.site == "Kleinanzeigen")
+            .collect();
+        assert_eq!(kleinanzeigen.len(), 1, "two places in one Kleinanzeigen scan");
+        assert_eq!(
+            kleinanzeigen[0].places,
+            ["Karlsruhe", "Rheinfelden"]
+        );
+
+        for call in &scanner.calls {
+            if call.site == "eBay" || call.site == "Vinted" {
+                assert!(
+                    call.places.is_empty(),
+                    "{} must not be filtered by places",
+                    call.site
+                );
+                assert!(
+                    !call.url.contains("Karlsruhe") && !call.url.contains("Rheinfelden"),
+                    "{} URL must not include places",
+                    call.site
+                );
+            }
         }
     }
 }

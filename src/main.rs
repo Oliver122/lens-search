@@ -4,12 +4,38 @@ use std::path::PathBuf;
 
 use lens_search::{
     encode_failure_line, encode_listing_line, listings_sorted_by_price, parse_failure_line,
-    parse_listing_line, parse_run_args, run, scan_requests, FetchFailure, Listing, ListingPage,
-    PageSource, PaginatingScanner, ScanRequest, SearchPage, SiteScanner,
+    parse_listing_line, parse_run_args, run_scanning_all_sites, scan_requests, FetchFailure,
+    Listing, ListingPage, LivePageSource, PageSource, PaginatingScanner, ScanRequest, SearchPage,
+    SiteScanner,
 };
 
 struct CliPageSource {
     fail_site: Option<String>,
+}
+
+enum CliSource {
+    Stub(CliPageSource),
+    Live(LivePageSource),
+}
+
+impl PageSource for CliSource {
+    fn fetch_page(
+        &mut self,
+        request: &ScanRequest,
+        page: u32,
+    ) -> Result<SearchPage, String> {
+        match self {
+            CliSource::Stub(source) => source.fetch_page(request, page),
+            CliSource::Live(source) => source.fetch_page(request, page),
+        }
+    }
+
+    fn fetch_listing_page(&mut self, url: &str) -> Result<ListingPage, String> {
+        match self {
+            CliSource::Stub(source) => source.fetch_listing_page(url),
+            CliSource::Live(source) => source.fetch_listing_page(url),
+        }
+    }
 }
 
 impl PageSource for CliPageSource {
@@ -155,8 +181,20 @@ fn main() {
     };
 
     let fail_site = std::env::var("LENS_SEARCH_FAIL_SITE").ok().filter(|s| !s.is_empty());
-    let mut scanner = PaginatingScanner::new(CliPageSource { fail_site });
-    let run_result = run(&parsed.term, &parsed.places, &mut scanner);
+    let stub = std::env::var("LENS_SEARCH_STUB").ok().filter(|s| !s.is_empty());
+    let source = if stub.is_some() || fail_site.is_some() {
+        CliSource::Stub(CliPageSource { fail_site })
+    } else {
+        let max_pages = std::env::var("LENS_SEARCH_MAX_PAGES")
+            .ok()
+            .and_then(|s| s.parse().ok());
+        let max_listings = std::env::var("LENS_SEARCH_MAX_LISTINGS")
+            .ok()
+            .and_then(|s| s.parse().ok());
+        CliSource::Live(LivePageSource::with_limits(max_pages, max_listings))
+    };
+    let mut scanner = PaginatingScanner::new(source);
+    let run_result = run_scanning_all_sites(&parsed.term, &parsed.places, &mut scanner);
     if let Err(err) = persist_failures(&scanner.fetch_failures()) {
         eprintln!("{err}");
         std::process::exit(1);

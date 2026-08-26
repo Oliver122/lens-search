@@ -1,5 +1,9 @@
 //! Terminal run: one search term, then public scans in site order.
 
+mod live;
+
+pub use live::LivePageSource;
+
 use std::cell::RefCell;
 use std::collections::HashSet;
 use std::rc::Rc;
@@ -88,7 +92,7 @@ pub fn public_search_url(site: &str, term: &str) -> String {
     }
 }
 
-fn urlencode(s: &str) -> String {
+pub(crate) fn urlencode(s: &str) -> String {
     let mut out = String::new();
     for b in s.bytes() {
         match b {
@@ -460,11 +464,30 @@ pub trait SiteScanner {
 
 /// Scan Kleinanzeigen, then eBay, then Vinted. Public search only (no login).
 pub fn run(term: &str, places: &[String], scanner: &mut impl SiteScanner) -> Result<(), String> {
+    run_sites(term, places, scanner, true)
+}
+
+/// Scan every site even if an earlier site fetch fails. Already-saved listings stay.
+pub fn run_scanning_all_sites(
+    term: &str,
+    places: &[String],
+    scanner: &mut impl SiteScanner,
+) -> Result<(), String> {
+    run_sites(term, places, scanner, false)
+}
+
+fn run_sites(
+    term: &str,
+    places: &[String],
+    scanner: &mut impl SiteScanner,
+    stop_on_failure: bool,
+) -> Result<(), String> {
     if term.is_empty() {
         return Err(RunError::EmptyTerm.to_string());
     }
     let run_id = new_run_id();
     scanner.begin_run();
+    let mut first_err = None;
     for request in scan_requests(term, places) {
         if request.requires_login() {
             return Err(format!("{} scan must not require login", request.site));
@@ -473,13 +496,23 @@ pub fn run(term: &str, places: &[String], scanner: &mut impl SiteScanner) -> Res
             scanner.note_failure(FetchFailure {
                 site: request.site.clone(),
                 term: request.term.clone(),
-                run_id,
+                run_id: run_id.clone(),
             });
-            return Err(err);
+            if stop_on_failure {
+                return Err(err);
+            }
+            if first_err.is_none() {
+                first_err = Some(err);
+            }
         }
     }
-    scanner.finish_run(term);
-    Ok(())
+    if first_err.is_none() {
+        scanner.finish_run(term);
+    }
+    match first_err {
+        Some(err) => Err(err),
+        None => Ok(()),
+    }
 }
 
 #[derive(Default)]

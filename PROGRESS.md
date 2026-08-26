@@ -16,4 +16,4 @@ Live board on `auto-feature/marketplace-scan-store`. Do not edit `requirements/m
 | 8 | A recheck of a term removes stored findings for that term whose URLs are not in the new fetch. URLs still found stay, with last-seen updated. | done |
 | 9 | A chosen date range is applied: findings whose dates fall outside that range are not kept. | done |
 | 10 | The terminal can list stored findings sorted by price. | done |
-| 11 | Live fetch works: a real run against Kleinanzeigen, eBay, and Vinted persists real listings (or a stored failure if a site fetch fails), not only locally invented rows. | todo |
+| 11 | Live fetch works: a real run against Kleinanzeigen, eBay, and Vinted persists real listings (or a stored failure if a site fetch fails), not only locally invented rows. | done |

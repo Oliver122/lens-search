@@ -1,10 +1,18 @@
 use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use lens_search::{encode_listing_line, Listing};
+use lens_search::{
+    encode_listing_line, parse_failure_line, parse_listing_line, FetchFailure, Listing,
+};
 
 fn bin() -> Command {
     Command::new(env!("CARGO_BIN_EXE_lens-search"))
+}
+
+fn stub_bin() -> Command {
+    let mut cmd = bin();
+    cmd.env("LENS_SEARCH_STUB", "1");
+    cmd
 }
 
 fn unique_store() -> std::path::PathBuf {
@@ -21,7 +29,7 @@ fn unique_store() -> std::path::PathBuf {
 
 #[test]
 fn terminal_run_accepts_one_term_and_scans_sites_in_order() {
-    let output = bin()
+    let output = stub_bin()
         .args(["run", "Fahrrad"])
         .output()
         .expect("run binary");
@@ -41,7 +49,7 @@ fn terminal_run_accepts_one_term_and_scans_sites_in_order() {
 
 #[test]
 fn terminal_run_rejects_two_terms() {
-    let output = bin()
+    let output = stub_bin()
         .args(["run", "Fahrrad", "Lampe"])
         .output()
         .expect("run binary");
@@ -52,13 +60,13 @@ fn terminal_run_rejects_two_terms() {
 
 #[test]
 fn terminal_run_rejects_missing_term() {
-    let output = bin().args(["run"]).output().expect("run binary");
+    let output = stub_bin().args(["run"]).output().expect("run binary");
     assert!(!output.status.success());
 }
 
 #[test]
 fn terminal_run_accepts_places_only_for_kleinanzeigen() {
-    let output = bin()
+    let output = stub_bin()
         .args(["run", "Fahrrad", "--places", "Karlsruhe", "Rheinfelden"])
         .output()
         .expect("run binary");
@@ -89,7 +97,7 @@ fn terminal_reads_stored_site_fetch_failure_after_run() {
     let store = unique_store();
     let _ = std::fs::remove_file(&store);
 
-    let run_output = bin()
+    let run_output = stub_bin()
         .args(["run", "Fahrrad"])
         .env("LENS_SEARCH_STORE", &store)
         .env("LENS_SEARCH_FAIL_SITE", "eBay")
@@ -210,4 +218,77 @@ fn terminal_lists_stored_findings_sorted_by_price() {
     assert!(low_at < mid_at && mid_at < high_at, "must be sorted by price");
 
     let _ = std::fs::remove_file(&store);
+}
+
+fn is_real_marketplace_url(url: &str) -> bool {
+    let host_ok = url.contains("kleinanzeigen.de")
+        || url.contains("ebay.")
+        || url.contains("vinted.");
+    host_ok
+        && !url.contains("example.com")
+        && (url.contains("/s-anzeige/") || url.contains("/itm/") || url.contains("/items/"))
+}
+
+#[test]
+fn live_run_persists_real_listings_or_stored_failures() {
+    let failures_path = unique_store();
+    let findings_path = unique_findings();
+    let _ = std::fs::remove_file(&failures_path);
+    let _ = std::fs::remove_file(&findings_path);
+
+    let output = bin()
+        .args(["run", "Fahrrad", "--places", "Karlsruhe", "Rheinfelden"])
+        .env("LENS_SEARCH_STORE", &failures_path)
+        .env("LENS_SEARCH_FINDINGS", &findings_path)
+        .env("LENS_SEARCH_MAX_PAGES", "1")
+        .env("LENS_SEARCH_MAX_LISTINGS", "1")
+        .output()
+        .expect("live run");
+
+    let findings_text = std::fs::read_to_string(&findings_path).unwrap_or_default();
+    let failures_text = std::fs::read_to_string(&failures_path).unwrap_or_default();
+    let listings: Vec<Listing> = findings_text
+        .lines()
+        .filter_map(parse_listing_line)
+        .collect();
+    let failures: Vec<FetchFailure> = failures_text
+        .lines()
+        .filter_map(parse_failure_line)
+        .collect();
+
+    for listing in &listings {
+        assert!(
+            is_real_marketplace_url(&listing.url),
+            "must persist a real listing URL, not a locally invented row: {}",
+            listing.url
+        );
+        assert!(
+            !listing.title.starts_with("title for "),
+            "must not persist locally invented titles: {}",
+            listing.title
+        );
+    }
+
+    for site in ["Kleinanzeigen", "eBay", "Vinted"] {
+        let has_listing = listings
+            .iter()
+            .any(|listing| listing.site == site && is_real_marketplace_url(&listing.url));
+        let has_failure = failures
+            .iter()
+            .any(|failure| failure.site == site && failure.term == "Fahrrad");
+        assert!(
+            has_listing || has_failure,
+            "{site} must persist a real listing or a stored fetch failure; listings={:?} failures={:?} status={:?} stderr={}",
+            listings
+                .iter()
+                .map(|listing| (listing.site.as_str(), listing.url.as_str()))
+                .collect::<Vec<_>>(),
+            failures,
+            output.status,
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+
+    let _ = std::fs::remove_file(&failures_path);
+    let _ = std::fs::remove_file(&findings_path);
 }

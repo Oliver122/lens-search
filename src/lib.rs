@@ -206,7 +206,17 @@ pub struct MemoryStore {
 
 impl MemoryStore {
     pub fn save(&self, listing: Listing) {
-        self.listings.borrow_mut().push(listing);
+        let mut listings = self.listings.borrow_mut();
+        if let Some(existing) = listings.iter_mut().find(|row| row.url == listing.url) {
+            existing.title = listing.title;
+            existing.price = listing.price;
+            existing.site = listing.site;
+            existing.search_term = listing.search_term;
+            existing.last_seen = listing.last_seen;
+            existing.product_images = listing.product_images;
+        } else {
+            listings.push(listing);
+        }
     }
 
     pub fn listings(&self) -> Vec<Listing> {
@@ -838,5 +848,35 @@ mod tests {
                 "at least the first product image from the listing page"
             );
         }
+    }
+
+    #[test]
+    fn two_fetches_same_listing_url_produce_one_row_even_when_terms_differ() {
+        let mut source = FakePageSource::default();
+        source.add("Kleinanzeigen", 1, true, &["https://example.com/shared"]);
+        source.add("eBay", 1, true, &[]);
+        source.add("Vinted", 1, true, &[]);
+
+        let store = MemoryStore::default();
+        let mut scanner = PaginatingScanner {
+            source,
+            store: store.clone(),
+        };
+
+        run("Fahrrad", &[], &mut scanner).unwrap();
+        run("Lampe", &[], &mut scanner).unwrap();
+
+        let listings = store.listings();
+        assert_eq!(
+            listings.len(),
+            1,
+            "the same listing URL must be one stored row"
+        );
+        assert_eq!(listings[0].url, "https://example.com/shared");
+        let matching: Vec<&Listing> = listings
+            .iter()
+            .filter(|listing| listing.url == "https://example.com/shared")
+            .collect();
+        assert_eq!(matching.len(), 1);
     }
 }

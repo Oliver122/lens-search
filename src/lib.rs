@@ -1,5 +1,8 @@
 //! Terminal run: one search term, then public scans in site order.
 
+use std::cell::RefCell;
+use std::rc::Rc;
+
 pub const SITES_IN_ORDER: [&str; 3] = ["Kleinanzeigen", "eBay", "Vinted"];
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -141,41 +144,61 @@ pub trait PageSource {
     fn fetch_page(&mut self, request: &ScanRequest, page: u32) -> Result<SearchPage, String>;
 }
 
+/// In-memory listing store. Saves are visible immediately to other handles.
+#[derive(Clone, Default)]
+pub struct MemoryStore {
+    listings: Rc<RefCell<Vec<Listing>>>,
+}
+
+impl MemoryStore {
+    pub fn save(&self, listing: Listing) {
+        self.listings.borrow_mut().push(listing);
+    }
+
+    pub fn listings(&self) -> Vec<Listing> {
+        self.listings.borrow().clone()
+    }
+}
+
 /// Fetch every page for one site request until the last page’s last listing.
+/// Each listing is written to the store as soon as its page is fetched.
 pub fn collect_listings(
     request: &ScanRequest,
     source: &mut impl PageSource,
-) -> Result<Vec<Listing>, String> {
-    let mut listings = Vec::new();
+    store: &MemoryStore,
+) -> Result<(), String> {
     let mut page = 1u32;
     loop {
         let search_page = source.fetch_page(request, page)?;
         let done = search_page.is_last || search_page.listings.is_empty();
-        listings.extend(search_page.listings);
+        for listing in search_page.listings {
+            store.save(listing);
+        }
         if done {
             break;
         }
         page += 1;
     }
-    Ok(listings)
+    Ok(())
 }
 
 pub struct PaginatingScanner<S> {
     pub source: S,
-    pub listings: Vec<Listing>,
+    pub store: MemoryStore,
 }
 
 impl<S: PageSource> PaginatingScanner<S> {
     pub fn new(source: S) -> Self {
         Self {
             source,
-            listings: Vec::new(),
+            store: MemoryStore::default(),
         }
     }
 
-    pub fn listings_for<'a>(&'a self, site: &str) -> Vec<&'a Listing> {
-        self.listings
-            .iter()
+    pub fn listings_for(&self, site: &str) -> Vec<Listing> {
+        self.store
+            .listings()
+            .into_iter()
             .filter(|listing| listing.site == site)
             .collect()
     }
@@ -183,9 +206,7 @@ impl<S: PageSource> PaginatingScanner<S> {
 
 impl<S: PageSource> SiteScanner for PaginatingScanner<S> {
     fn scan(&mut self, request: &ScanRequest) -> Result<(), String> {
-        let fetched = collect_listings(request, &mut self.source)?;
-        self.listings.extend(fetched);
-        Ok(())
+        collect_listings(request, &mut self.source, &self.store)
     }
 }
 
@@ -363,10 +384,10 @@ mod tests {
         let mut scanner = PaginatingScanner::new(source);
         run("Fahrrad", &places, &mut scanner).unwrap();
 
-        let ka: Vec<&str> = scanner
+        let ka: Vec<String> = scanner
             .listings_for("Kleinanzeigen")
-            .iter()
-            .map(|l| l.url.as_str())
+            .into_iter()
+            .map(|l| l.url)
             .collect();
         assert_eq!(
             ka,
@@ -378,17 +399,17 @@ mod tests {
             "Kleinanzeigen must not stop after the first listing"
         );
 
-        let eb: Vec<&str> = scanner
+        let eb: Vec<String> = scanner
             .listings_for("eBay")
-            .iter()
-            .map(|l| l.url.as_str())
+            .into_iter()
+            .map(|l| l.url)
             .collect();
         assert_eq!(eb, ["https://eb.example/1", "https://eb.example/2"]);
 
-        let vi: Vec<&str> = scanner
+        let vi: Vec<String> = scanner
             .listings_for("Vinted")
-            .iter()
-            .map(|l| l.url.as_str())
+            .into_iter()
+            .map(|l| l.url)
             .collect();
         assert_eq!(vi, ["https://vi.example/1", "https://vi.example/2"]);
 
@@ -422,6 +443,146 @@ mod tests {
                 .iter()
                 .any(|(site, page, _)| site == "eBay" && *page == 2),
             "eBay must continue past page 1"
+        );
+    }
+
+    struct StoreAwarePageSource {
+        inner: FakePageSource,
+        store: MemoryStore,
+        urls_in_store_before_fetch: Vec<Vec<String>>,
+        fail_site: Option<String>,
+    }
+
+    impl PageSource for StoreAwarePageSource {
+        fn fetch_page(
+            &mut self,
+            request: &ScanRequest,
+            page: u32,
+        ) -> Result<SearchPage, String> {
+            self.urls_in_store_before_fetch.push(
+                self.store
+                    .listings()
+                    .iter()
+                    .map(|listing| listing.url.clone())
+                    .collect(),
+            );
+            if self.fail_site.as_deref() == Some(request.site.as_str()) {
+                return Err(format!("{} fetch failed", request.site));
+            }
+            self.inner.fetch_page(request, page)
+        }
+    }
+
+    #[test]
+    fn listings_are_stored_immediately_and_remain_if_later_site_fails() {
+        let mut inner = FakePageSource::default();
+        inner.add(
+            "Kleinanzeigen",
+            1,
+            false,
+            &["https://ka.example/1", "https://ka.example/2"],
+        );
+        inner.add("Kleinanzeigen", 2, true, &["https://ka.example/3"]);
+        inner.add("eBay", 1, true, &["https://eb.example/1"]);
+
+        let store = MemoryStore::default();
+        let source = StoreAwarePageSource {
+            inner,
+            store: store.clone(),
+            urls_in_store_before_fetch: Vec::new(),
+            fail_site: Some("eBay".to_string()),
+        };
+        let mut scanner = PaginatingScanner {
+            source,
+            store: store.clone(),
+        };
+
+        let err = run("Fahrrad", &[], &mut scanner).unwrap_err();
+        assert!(
+            err.contains("eBay"),
+            "run should surface the later site failure: {err}"
+        );
+
+        let before = &scanner.source.urls_in_store_before_fetch;
+        assert_eq!(
+            before[0],
+            [] as [String; 0],
+            "store starts empty before the first fetch"
+        );
+        assert_eq!(
+            before[1],
+            ["https://ka.example/1", "https://ka.example/2"],
+            "page 1 listings must already be in the store before the next fetch"
+        );
+        assert_eq!(
+            before[2],
+            [
+                "https://ka.example/1",
+                "https://ka.example/2",
+                "https://ka.example/3"
+            ],
+            "all Kleinanzeigen listings must be in the store before eBay is fetched"
+        );
+
+        let readable: Vec<String> = store
+            .listings()
+            .into_iter()
+            .map(|listing| listing.url)
+            .collect();
+        assert_eq!(
+            readable,
+            [
+                "https://ka.example/1",
+                "https://ka.example/2",
+                "https://ka.example/3"
+            ],
+            "Kleinanzeigen listings from this run remain readable after eBay fails"
+        );
+        assert!(
+            store
+                .listings()
+                .iter()
+                .all(|listing| listing.site == "Kleinanzeigen"),
+            "failed eBay must not leave listings"
+        );
+    }
+
+    #[test]
+    fn earlier_sites_remain_readable_if_vinted_fails() {
+        let mut inner = FakePageSource::default();
+        inner.add("Kleinanzeigen", 1, true, &["https://ka.example/1"]);
+        inner.add("eBay", 1, true, &["https://eb.example/1"]);
+        inner.add("Vinted", 1, true, &["https://vi.example/1"]);
+
+        let store = MemoryStore::default();
+        let source = StoreAwarePageSource {
+            inner,
+            store: store.clone(),
+            urls_in_store_before_fetch: Vec::new(),
+            fail_site: Some("Vinted".to_string()),
+        };
+        let mut scanner = PaginatingScanner {
+            source,
+            store: store.clone(),
+        };
+
+        assert!(run("Fahrrad", &[], &mut scanner).is_err());
+
+        let readable: Vec<(String, String)> = store
+            .listings()
+            .into_iter()
+            .map(|listing| (listing.site, listing.url))
+            .collect();
+        assert_eq!(
+            readable,
+            [
+                (
+                    "Kleinanzeigen".to_string(),
+                    "https://ka.example/1".to_string()
+                ),
+                ("eBay".to_string(), "https://eb.example/1".to_string())
+            ],
+            "Kleinanzeigen and eBay listings remain readable after Vinted fails"
         );
     }
 }

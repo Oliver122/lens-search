@@ -3,46 +3,41 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 source tests/helpers.sh
 
+# The three old board scripts are gone; progress-board.sh is the sole owner.
+test ! -f scripts/init-progress.sh
+test ! -f scripts/set-progress-state.sh
+test ! -f scripts/write-orchestration.sh
+test -f scripts/progress-board.sh
+
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
-make_repo "$tmp/repo"
-cd "$tmp/repo"
-
-mkdir -p "$tmp/bin"
-cp "$ROOT/tests/fake-agent.sh" "$tmp/bin/agent"
-chmod +x "$tmp/bin/agent"
-export PATH="${tmp/bin}:${PATH}"
-export AGENT_BIN="$tmp/bin/agent"
-export CURSOR_API_KEY=test-key
-export ORCH_AGENT_SLEEP=0
-export ORCH_AGENT_MODE=unique
-export ORCHESTRATOR_WORKTREE_ROOT="$tmp/wts"
-
 slug=board
-mkdir -p "requirements/${slug}"
-echo overview > "requirements/${slug}/overview.md"
-cat > "requirements/${slug}/specified-tests.md" <<'EOF'
-1. First check
-2. Second check
-EOF
-git add requirements && git commit -m spec >/dev/null
-git checkout -b "req/${slug}" >/dev/null
-./scripts/open-auto-feature.sh "$slug" >/dev/null
-git checkout "auto-feature/${slug}" >/dev/null
+make_feature_repo "$tmp/repo" "$slug"
+
+install_test_agent "$tmp/bin"
+install_test_verifier
+export CURSOR_API_KEY=test-key
 
 ./scripts/run-orchestrator.sh "$slug"
-git checkout "auto-feature/${slug}" >/dev/null
-test -f ORCHESTRATION.md
-grep -q '| 1 |' ORCHESTRATION.md
-grep -q '| 2 |' ORCHESTRATION.md
-grep -q '| done |' ORCHESTRATION.md
+
+# Single board: PROGRESS.md only, no ORCHESTRATION.md.
+test ! -f ORCHESTRATION.md
+test -f PROGRESS.md
+grep -q '| 1 |' PROGRESS.md
+grep -q '| 2 |' PROGRESS.md
 while IFS='|' read -r _ num _ state _; do
   num="${num// /}"
   state="${state// /}"
   if [[ "$num" =~ ^[0-9]+$ ]]; then
-    if [[ ! "$state" =~ ^(running|done|blocked)$ ]]; then
-      echo "bad orchestration state: ${state}" >&2
+    if [[ ! "$state" =~ ^(todo|in-progress|done|gap)$ ]]; then
+      echo "bad board state: ${state}" >&2
       exit 1
     fi
   fi
-done < ORCHESTRATION.md
+done < PROGRESS.md
+
+assert_eq "$(./scripts/progress-board.sh get "$slug" 1)" "done" "subtask 1 done on board"
+assert_eq "$(./scripts/progress-board.sh get "$slug" 2)" "done" "subtask 2 done on board"
+
+# Board is committed with the subtask (same commit), not left dirty.
+assert_eq "$(git status --porcelain)" "" "clean tree after run"

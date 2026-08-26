@@ -4,8 +4,9 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-# Policy tests are local-only; do not inherit CI push flags.
+# Policy tests are local-only; do not inherit CI push flags or orchestrator seams.
 unset OPEN_AUTO_FEATURE_PUSH OPEN_AUTO_FEATURE_MR OPEN_MISSING_REQ_PUSH OPEN_MISSING_REQ_COMMENT OPEN_AUTO_FIX_PUSH
+unset ORCH_VERIFY_BIN ORCH_TRACE ORCH_PROMPT_DIR ORCH_AGENT_SLEEP FAKE_VERIFIER_PLAN FAKE_VERIFIER_COUNT
 
 make_repo() {
   local dir="$1"
@@ -56,4 +57,23 @@ install_test_agent() {
   chmod +x "$dest/agent"
   export AGENT_BIN="$dest/agent"
   export PATH="${dest}:${PATH}"
+}
+
+install_test_verifier() {
+  export ORCH_VERIFY_BIN="$ROOT/tests/fake-verifier.sh"
+}
+
+# make_repo + two-test spec + open-auto-feature; leaves cwd on auto-feature/<slug>.
+make_feature_repo() {
+  local dir="$1" slug="$2"
+  make_repo "$dir"
+  cd "$dir"
+  mkdir -p "requirements/${slug}"
+  echo "overview for ${slug}" > "requirements/${slug}/overview.md"
+  printf '1. First check for %s\n2. Second check for %s\n' "$slug" "$slug" \
+    > "requirements/${slug}/specified-tests.md"
+  git add requirements && git commit -m "spec ${slug}" >/dev/null
+  git checkout -b "req/${slug}" >/dev/null
+  ./scripts/open-auto-feature.sh "$slug" >/dev/null
+  git checkout "auto-feature/${slug}" >/dev/null
 }

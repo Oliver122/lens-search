@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
-# Orchestrator: split specified-tests into subtasks, run subtask coders in parallel
-# worktrees, merge onto auto-feature/<slug>. Not a single coder for the whole set.
+# Orchestrator: sequential subtask loop on auto-feature/<slug> with an executable
+# verify gate. Per subtask: coder → verify (build + accumulated test suite); on
+# red the coder is re-invoked once with the failure output (2 attempts total);
+# still red → GAPS.md entry + gap state, loop continues. Each completed subtask
+# is committed and pushed immediately with the board updated in the same commit,
+# so a restarted run resumes from the board (done/gap rows are skipped).
 set -euo pipefail
 
 slug="${1:?slug required}"
@@ -22,21 +26,6 @@ if [[ ! -f "${req}/CYCLE" ]]; then
   exit 1
 fi
 
-if [[ -z "${CURSOR_API_KEY:-}" ]]; then
-  echo "run-orchestrator: CURSOR_API_KEY is unset" >&2
-  exit 1
-fi
-
-if [[ -z "${AGENT_BIN:-}" ]]; then
-  if ! command -v agent >/dev/null 2>&1; then
-    export PATH="${HOME}/.cursor/bin:${HOME}/.local/bin:${PATH}"
-  fi
-  if ! command -v agent >/dev/null 2>&1; then
-    echo "run-orchestrator: agent not on PATH; run scripts/install-cursor-cli.sh" >&2
-    exit 1
-  fi
-fi
-
 author_email="${GIT_AUTHOR_EMAIL:-bot@local}"
 author_name="${GIT_AUTHOR_NAME:-auto-feature}"
 commit_if_dirty() {
@@ -53,8 +42,8 @@ push_feat() {
   fi
 }
 
-split="${root}/scripts/split-specified-tests.sh"
-mapfile -t rows < <("$split" "$slug")
+board="${root}/scripts/progress-board.sh"
+mapfile -t rows < <("${root}/scripts/split-specified-tests.sh" "$slug")
 if [[ ${#rows[@]} -eq 0 ]]; then
   echo "run-orchestrator: specified-tests.md has no numbered tests; too thin to split" >&2
   "${root}/scripts/open-missing-req.sh" "$slug" \
@@ -62,143 +51,75 @@ if [[ ${#rows[@]} -eq 0 ]]; then
   exit 0
 fi
 
-"${root}/scripts/init-progress.sh" "$slug"
-"${root}/scripts/write-orchestration.sh" "$slug"
+"$board" init "$slug"
 commit_if_dirty "orchestrator(${slug}): board"
 push_feat
 
-wt_root="${ORCHESTRATOR_WORKTREE_ROOT:-$(mktemp -d)}"
-mkdir -p "$wt_root"
-nums=()
-declare -A texts=()
-cleanup() {
-  local n wt
-  git -C "$root" checkout "$feat" >/dev/null 2>&1 || true
-  for n in "${nums[@]+"${nums[@]}"}"; do
-    wt="${wt_root}/t${n}"
-    git -C "$root" worktree remove --force "$wt" >/dev/null 2>&1 || true
-    git -C "$root" branch -D "auto-feature/${slug}--t${n}" >/dev/null 2>&1 || true
-  done
+record_gap() {
+  local n="$1" text="$2"
+  if [[ ! -f "${root}/GAPS.md" ]]; then
+    { echo "# Gaps — ${slug}"; echo; } > "${root}/GAPS.md"
+  fi
+  echo "- ${n}. ${text} (verify red after 2 attempts)" >> "${root}/GAPS.md"
 }
-trap cleanup EXIT
 
 for row in "${rows[@]}"; do
   n="${row%%$'\t'*}"
-  texts["$n"]="${row#*$'\t'}"
-  nums+=("$n")
-done
+  text="${row#*$'\t'}"
 
-for n in "${nums[@]}"; do
-  "${root}/scripts/write-orchestration.sh" "$slug" "$n" running
-done
-commit_if_dirty "orchestrator(${slug}): subtasks running"
-push_feat
-
-declare -A pids=()
-for n in "${nums[@]}"; do
-  wt="${wt_root}/t${n}"
-  br="auto-feature/${slug}--t${n}"
-  git worktree add -b "$br" "$wt" "$feat"
-  (
-    cd "$wt"
-    "${root}/scripts/run-subtask-coder.sh" "$slug" "$n"
-  ) >"${wt_root}/log-${n}.txt" 2>&1 &
-  pids["$n"]=$!
-done
-
-merge_one() {
-  local n="$1"
-  local br="auto-feature/${slug}--t${n}"
-  git -C "$root" checkout "$feat"
-  if "${root}/scripts/merge-subtask-worktree.sh" "$slug" "$n" "$br"; then
-    "${root}/scripts/write-orchestration.sh" "$slug" "$n" done
-    "${root}/scripts/set-progress-state.sh" "$slug" "$n" done
-    commit_if_dirty "orchestrator(${slug}): ${n} done"
-    push_feat
-    return 0
+  state="$("$board" get "$slug" "$n")"
+  if [[ "$state" == done || "$state" == gap ]]; then
+    echo "run-orchestrator: subtask ${n} already ${state}; skip"
+    continue
   fi
-  git -C "$root" merge --abort >/dev/null 2>&1 || true
-  "${root}/scripts/write-orchestration.sh" "$slug" "$n" blocked
-  commit_if_dirty "orchestrator(${slug}): ${n} blocked conflict"
-  push_feat
-  return 1
-}
 
-pending=()
-coder_failed=()
-alive=("${nums[@]}")
-while [[ ${#alive[@]} -gt 0 ]]; do
-  still=()
-  for n in "${alive[@]}"; do
-    if kill -0 "${pids[$n]}" 2>/dev/null; then
-      still+=("$n")
-      continue
-    fi
+  "$board" set "$slug" "$n" in-progress
+  green_ref="$(git rev-parse HEAD)"
+  failure_log="$(mktemp)"
+  verified=0
+
+  for attempt in 1 2; do
+    echo "::group::subtask ${n} attempt ${attempt}"
     rc=0
-    wait "${pids[$n]}" || rc=$?
-    if [[ "$rc" -eq 0 ]]; then
-      if ! merge_one "$n"; then
-        pending+=("$n")
-      fi
+    if [[ "$attempt" -eq 1 ]]; then
+      "${root}/scripts/run-subtask-coder.sh" "$slug" "$n" || rc=$?
     else
-      echo "run-orchestrator: subtask ${n} coder failed" >&2
-      cat "${wt_root}/log-${n}.txt" >&2 || true
-      git checkout "$feat"
-      "${root}/scripts/write-orchestration.sh" "$slug" "$n" blocked
-      commit_if_dirty "orchestrator(${slug}): ${n} blocked coder"
-      push_feat
-      coder_failed+=("$n")
+      "${root}/scripts/run-subtask-coder.sh" "$slug" "$n" "$failure_log" || rc=$?
     fi
+    echo "::endgroup::"
+    if [[ "$rc" -eq 2 ]]; then
+      echo "run-orchestrator: coder environment problem on subtask ${n}; aborting" >&2
+      exit 1
+    fi
+    # Any other coder crash folds into the red-attempt path: verify decides.
+    t0="$(date +%s)"
+    vrc=0
+    "${root}/scripts/verify-subtask.sh" >"$failure_log" 2>&1 || vrc=$?
+    t1="$(date +%s)"
+    if [[ "$vrc" -eq 0 ]]; then
+      echo "run-orchestrator: subtask ${n} attempt ${attempt} verify=green duration=$((t1 - t0))s"
+      verified=1
+      break
+    fi
+    echo "run-orchestrator: subtask ${n} attempt ${attempt} verify=red duration=$((t1 - t0))s"
   done
-  if [[ ${#still[@]} -eq ${#alive[@]} ]]; then
-    sleep 0.2
+
+  if [[ "$verified" -eq 1 ]]; then
+    "$board" set "$slug" "$n" done
+    commit_if_dirty "coder(${slug}): ${n} done"
+    push_feat
+  else
+    echo "run-orchestrator: subtask ${n} red after 2 attempts; recording gap" >&2
+    cat "$failure_log" >&2 || true
+    # Discard the unverified work so the accumulated suite stays green.
+    git reset --hard "$green_ref" >/dev/null
+    git clean -fd >/dev/null
+    record_gap "$n" "$text"
+    "$board" set "$slug" "$n" gap
+    commit_if_dirty "orchestrator(${slug}): ${n} gap"
+    push_feat
   fi
-  alive=("${still[@]+"${still[@]}"}")
+  rm -f "$failure_log"
 done
 
-progress=1
-while [[ "$progress" -eq 1 && ${#pending[@]} -gt 0 ]]; do
-  progress=0
-  still=()
-  for n in "${pending[@]}"; do
-    if merge_one "$n"; then
-      progress=1
-    else
-      still+=("$n")
-    fi
-  done
-  pending=("${still[@]+"${still[@]}"}")
-done
-
-if [[ ${#pending[@]} -gt 0 || ${#coder_failed[@]} -gt 0 ]]; then
-  git checkout "$feat"
-  {
-    echo "# Gaps — ${slug}"
-    echo
-    if [[ ${#pending[@]} -gt 0 ]]; then
-      echo "Unmet specified tests (worktree merge conflict; orchestrator did not invent a spec or force-merge):"
-      echo
-      for n in "${pending[@]}"; do
-        echo "- ${n}. ${texts[$n]}"
-      done
-      echo
-    fi
-    if [[ ${#coder_failed[@]} -gt 0 ]]; then
-      echo "Unmet specified tests (subtask coder failed):"
-      echo
-      for n in "${coder_failed[@]}"; do
-        echo "- ${n}. ${texts[$n]}"
-      done
-    fi
-  } >>"${root}/GAPS.md"
-  for n in "${pending[@]+"${pending[@]}"}" "${coder_failed[@]+"${coder_failed[@]}"}"; do
-    [[ -n "$n" ]] || continue
-    "${root}/scripts/write-orchestration.sh" "$slug" "$n" blocked
-    "${root}/scripts/set-progress-state.sh" "$slug" "$n" gap
-  done
-  commit_if_dirty "orchestrator(${slug}): GAPS after conflict"
-  push_feat
-fi
-
-git checkout "$feat"
-echo "run-orchestrator: ${feat} subtasks=${#nums[@]}"
+echo "run-orchestrator: ${feat} subtasks=${#rows[@]} complete"

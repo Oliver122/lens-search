@@ -31,7 +31,8 @@ if ! command -v agent >/dev/null 2>&1; then
   exit 1
 fi
 
-agent -p --force "$(cat "${root}/scripts/hardener-prompt.md")
+model="${CURSOR_AGENT_MODEL:-cursor-grok-4.6-medium}"
+agent -p --force --model "$model" "$(cat "${root}/scripts/hardener-prompt.md")
 
 Slug: ${slug}
 "

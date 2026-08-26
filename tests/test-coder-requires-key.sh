@@ -4,8 +4,12 @@ cd "$(dirname "$0")/.."
 source tests/helpers.sh
 
 grep -q 'CURSOR_API_KEY' "$ROOT/.github/workflows/auto-feature.yml"
+grep -q 'cursor-grok-4.6-medium' "$ROOT/.github/workflows/auto-feature.yml"
+grep -q 'GITHUB_SHA}:scripts/run-coder.sh' "$ROOT/.github/workflows/auto-feature.yml"
 grep -q 'install-cursor-cli.sh' "$ROOT/.github/workflows/auto-feature.yml"
 grep -q 'install-cursor-cli.sh' "$ROOT/.github/workflows/auto-fix.yml"
+grep -q 'cursor-grok-4.6-medium' "$ROOT/scripts/run-coder.sh"
+grep -q 'cursor-grok-4.6-medium' "$ROOT/scripts/run-hardener.sh"
 
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT

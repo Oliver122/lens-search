@@ -58,9 +58,12 @@ jobs:
           GIT_AUTHOR_NAME: auto-feature
           GIT_AUTHOR_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
           OPEN_AUTO_FEATURE_PUSH: "1"
+          CURSOR_AGENT_MODEL: cursor-grok-4.6-medium
         run: |
           echo "$HOME/.cursor/bin" >> "$GITHUB_PATH"
           export PATH="$HOME/.cursor/bin:$PATH"
+          git show "${GITHUB_SHA}:scripts/run-coder.sh" > scripts/run-coder.sh
+          chmod +x scripts/run-coder.sh
           ./scripts/run-coder.sh "${{ steps.slug.outputs.slug }}"
 
       # GITHUB_TOKEN pushes do not start other workflows. If coder wrote GAPS.md, harden here.
@@ -71,10 +74,13 @@ jobs:
           GIT_AUTHOR_NAME: auto-fix
           GIT_AUTHOR_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
           OPEN_AUTO_FIX_PUSH: "1"
+          CURSOR_AGENT_MODEL: cursor-grok-4.6-medium
         run: |
           export PATH="$HOME/.cursor/bin:$PATH"
           slug="${{ steps.slug.outputs.slug }}"
           git checkout "auto-feature/${slug}"
+          git show "${GITHUB_SHA}:scripts/run-hardener.sh" > scripts/run-hardener.sh
+          chmod +x scripts/run-hardener.sh
           if [[ -f GAPS.md ]]; then
             ./scripts/open-auto-fix.sh "$slug"
             ./scripts/run-hardener.sh "$slug"

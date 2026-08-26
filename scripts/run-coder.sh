@@ -39,7 +39,8 @@ if [[ ! -f "$prompt_file" ]]; then
   exit 1
 fi
 
-agent -p --force "$(cat "$prompt_file")
+model="${CURSOR_AGENT_MODEL:-cursor-grok-4.6-medium}"
+agent -p --force --model "$model" "$(cat "$prompt_file")
 
 Slug: ${slug}
 RequirementSet path: ${req}/

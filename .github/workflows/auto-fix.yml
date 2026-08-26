@@ -46,6 +46,7 @@ jobs:
           GIT_AUTHOR_NAME: auto-fix
           GIT_AUTHOR_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
           OPEN_AUTO_FIX_PUSH: "1"
+          CURSOR_AGENT_MODEL: cursor-grok-4.6-medium
         run: |
           echo "$HOME/.cursor/bin" >> "$GITHUB_PATH"
           export PATH="$HOME/.cursor/bin:$PATH"

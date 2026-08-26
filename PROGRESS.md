@@ -6,7 +6,7 @@ Live board on `auto-feature/marketplace-scan-store`. Do not edit `requirements/m
 
 | # | specified test | state |
 |---|---|---|
-| 1 | From the terminal, a run accepts exactly one search term and then scans Kleinanzeigen, then eBay, then Vinted, without requiring login. | todo |
+| 1 | From the terminal, a run accepts exactly one search term and then scans Kleinanzeigen, then eBay, then Vinted, without requiring login. | done |
 | 2 | The same run accepts a list of places used only for Kleinanzeigen. eBay and Vinted in that run are not filtered by those places. Two places (e.g. Karlsruhe and Rheinfelden) are accepted in one Kleinanzeigen scan. | todo |
 | 3 | A site scan continues until the last page’s last listing for that term (and for Kleinanzeigen, those places). It does not stop after the first listing. | todo |
 | 4 | Each listing is in the store as soon as it is fetched. If eBay or Vinted then fails, Kleinanzeigen (and any earlier successful site) listings from that run remain readable. | todo |

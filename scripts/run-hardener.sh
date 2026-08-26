@@ -32,10 +32,20 @@ if ! command -v agent >/dev/null 2>&1; then
 fi
 
 model="${CURSOR_AGENT_MODEL:-cursor-grok-4.6-medium}"
-agent -p --force --model "$model" "$(cat "${root}/scripts/hardener-prompt.md")
+log="${root}/scripts/ci-agent-log.py"
+echo "run-hardener: slug=${slug} model=${model}"
+agent_cmd=(agent -p --force --model "$model" --output-format stream-json)
+if [[ -f "$log" ]]; then
+  "${agent_cmd[@]}" "$(cat "${root}/scripts/hardener-prompt.md")
+
+Slug: ${slug}
+" | python3 "$log"
+else
+  "${agent_cmd[@]}" "$(cat "${root}/scripts/hardener-prompt.md")
 
 Slug: ${slug}
 "
+fi
 
 if [[ -n "$(git status --porcelain)" ]]; then
   git add -A

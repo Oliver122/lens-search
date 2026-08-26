@@ -5,6 +5,12 @@ on:
     branches:
       - "req/**"
 
+run-name: "${{ github.ref_name }} · grok-4.6-medium"
+
+concurrency:
+  group: auto-feature-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: write
   pull-requests: write
@@ -12,7 +18,10 @@ permissions:
 jobs:
   open:
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    timeout-minutes: 15
+    outputs:
+      open: ${{ steps.halt.outputs.open }}
+      slug: ${{ steps.slug.outputs.slug }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -47,42 +56,99 @@ jobs:
           OPEN_AUTO_FEATURE_BASE: main
         run: ./scripts/open-auto-feature.sh "${{ steps.slug.outputs.slug }}"
 
+  coder:
+    needs: open
+    if: needs.open.outputs.open == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      CURSOR_AGENT_MODEL: cursor-grok-4.6-medium
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Checkout auto-feature branch
+        run: |
+          slug="${{ needs.open.outputs.slug }}"
+          git fetch origin "auto-feature/${slug}"
+          git checkout -B "auto-feature/${slug}" "origin/auto-feature/${slug}"
+          git show "${GITHUB_SHA}:scripts/run-coder.sh" > scripts/run-coder.sh
+          git show "${GITHUB_SHA}:scripts/init-progress.sh" > scripts/init-progress.sh
+          git show "${GITHUB_SHA}:scripts/ci-agent-log.py" > scripts/ci-agent-log.py
+          git show "${GITHUB_SHA}:scripts/ci-pr-progress.sh" > scripts/ci-pr-progress.sh
+          git show "${GITHUB_SHA}:scripts/coder-prompt.md" > scripts/coder-prompt.md
+          chmod +x scripts/run-coder.sh scripts/init-progress.sh scripts/ci-pr-progress.sh
+
+      - name: Progress on MR
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git show "${GITHUB_SHA}:scripts/ci-pr-progress.sh" > scripts/ci-pr-progress.sh
+          chmod +x scripts/ci-pr-progress.sh
+          ./scripts/ci-pr-progress.sh "${{ needs.open.outputs.slug }}" "Coder started"
+
       - name: Install Cursor CLI
-        if: steps.halt.outputs.open == 'true'
         run: ./scripts/install-cursor-cli.sh
 
       - name: Coder
-        if: steps.halt.outputs.open == 'true'
         env:
           CURSOR_API_KEY: ${{ secrets.CURSOR_API_KEY }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GIT_AUTHOR_NAME: auto-feature
           GIT_AUTHOR_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
           OPEN_AUTO_FEATURE_PUSH: "1"
-          CURSOR_AGENT_MODEL: cursor-grok-4.6-medium
         run: |
           echo "$HOME/.cursor/bin" >> "$GITHUB_PATH"
           export PATH="$HOME/.cursor/bin:$PATH"
-          git show "${GITHUB_SHA}:scripts/run-coder.sh" > scripts/run-coder.sh
-          chmod +x scripts/run-coder.sh
-          ./scripts/run-coder.sh "${{ steps.slug.outputs.slug }}"
+          ./scripts/run-coder.sh "${{ needs.open.outputs.slug }}"
 
-      # GITHUB_TOKEN pushes do not start other workflows. If coder wrote GAPS.md, harden here.
-      - name: Auto-fix in-job when GAPS.md exists
-        if: steps.halt.outputs.open == 'true'
+      - name: Progress on MR (coder finished)
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: ./scripts/ci-pr-progress.sh "${{ needs.open.outputs.slug }}" "Coder ${{ job.status }}"
+
+  harden:
+    needs: [open, coder]
+    if: needs.open.outputs.open == 'true' && needs.coder.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      CURSOR_AGENT_MODEL: cursor-grok-4.6-medium
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Checkout auto-feature and restore hardener
+        run: |
+          slug="${{ needs.open.outputs.slug }}"
+          git fetch origin "auto-feature/${slug}"
+          git checkout -B "auto-feature/${slug}" "origin/auto-feature/${slug}"
+          git show "${GITHUB_SHA}:scripts/run-hardener.sh" > scripts/run-hardener.sh
+          git show "${GITHUB_SHA}:scripts/hardener-prompt.md" > scripts/hardener-prompt.md
+          git show "${GITHUB_SHA}:scripts/ci-agent-log.py" > scripts/ci-agent-log.py
+          git show "${GITHUB_SHA}:scripts/open-auto-fix.sh" > scripts/open-auto-fix.sh
+          git show "${GITHUB_SHA}:scripts/merge-auto-fix.sh" > scripts/merge-auto-fix.sh
+          chmod +x scripts/run-hardener.sh scripts/open-auto-fix.sh scripts/merge-auto-fix.sh
+
+      - name: Auto-fix when GAPS.md exists
         env:
           CURSOR_API_KEY: ${{ secrets.CURSOR_API_KEY }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GIT_AUTHOR_NAME: auto-fix
           GIT_AUTHOR_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
           OPEN_AUTO_FIX_PUSH: "1"
-          CURSOR_AGENT_MODEL: cursor-grok-4.6-medium
         run: |
+          echo "$HOME/.cursor/bin" >> "$GITHUB_PATH"
           export PATH="$HOME/.cursor/bin:$PATH"
-          slug="${{ steps.slug.outputs.slug }}"
-          git checkout "auto-feature/${slug}"
-          git show "${GITHUB_SHA}:scripts/run-hardener.sh" > scripts/run-hardener.sh
-          chmod +x scripts/run-hardener.sh
+          slug="${{ needs.open.outputs.slug }}"
           if [[ -f GAPS.md ]]; then
+            ./scripts/install-cursor-cli.sh
             ./scripts/open-auto-fix.sh "$slug"
             ./scripts/run-hardener.sh "$slug"
             ./scripts/merge-auto-fix.sh "$slug"
+          else
+            echo "harden: no GAPS.md"
           fi

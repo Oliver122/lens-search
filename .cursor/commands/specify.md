@@ -19,7 +19,7 @@ If `$ARGUMENTS` is empty, ask for a kebab-case feature slug and stop.
 
 Directory: `requirements/<slug>/`.
 
-If that directory is missing, copy `requirements/_template/` into it, then replace placeholders with the slug.
+If that directory is missing, copy `requirements/_template/` into it, then replace placeholders with the slug. `progress.md` in the set is a legend only. Live status during a cycle is root `PROGRESS.md` on `auto-feature/<slug>` (coder writes it). Do not put `todo`/`done` rows into the RequirementSet.
 
 Write:
 

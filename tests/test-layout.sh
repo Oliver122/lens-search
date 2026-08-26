@@ -7,6 +7,7 @@ source tests/helpers.sh
 # Template layout
 test -f requirements/_template/overview.md
 test -f requirements/_template/specified-tests.md
+test -f requirements/_template/progress.md
 test ! -e requirements/_template/CYCLE
 
 # Copied set layout: overview + specified-tests, no CYCLE until openAutoFeature
@@ -18,6 +19,7 @@ mkdir -p "$tmp/repo/requirements/${slug}"
 cp "$tmp/repo/requirements/_template/"* "$tmp/repo/requirements/${slug}/"
 test -f "$tmp/repo/requirements/${slug}/overview.md"
 test -f "$tmp/repo/requirements/${slug}/specified-tests.md"
+test -f "$tmp/repo/requirements/${slug}/progress.md"
 test ! -e "$tmp/repo/requirements/${slug}/CYCLE"
 
 # specify command exists

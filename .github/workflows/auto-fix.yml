@@ -50,6 +50,7 @@ jobs:
         run: |
           echo "$HOME/.cursor/bin" >> "$GITHUB_PATH"
           export PATH="$HOME/.cursor/bin:$PATH"
+          git show "${GITHUB_SHA}:scripts/ci-agent-log.py" > scripts/ci-agent-log.py || true
           ./scripts/run-hardener.sh "${{ steps.slug.outputs.slug }}"
 
       - name: Merge fix into feature (same MR)

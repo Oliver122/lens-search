@@ -1,0 +1,36 @@
+name: missing-req
+
+on:
+  workflow_dispatch:
+    inputs:
+      slug:
+        description: Feature slug
+        required: true
+      reason:
+        description: Why the spec is too thin
+        required: false
+        default: Spec too thin. Human must specify; do not invent Gherkin.
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  open:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: openMissingReq
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GIT_AUTHOR_NAME: missing-req
+          GIT_AUTHOR_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
+          GIT_COMMITTER_NAME: missing-req
+          GIT_COMMITTER_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
+          OPEN_MISSING_REQ_PUSH: "1"
+          OPEN_MISSING_REQ_COMMENT: "1"
+        run: |
+          ./scripts/open-missing-req.sh "${{ inputs.slug }}" "${{ inputs.reason }}"

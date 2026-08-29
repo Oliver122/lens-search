@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Print slug from refs like req/<slug>, auto-feature/<slug>, auto-fix/<slug>, missing-req/<slug>.
+# Print slug from req/, cycle/, orchestrator/, worker/<slug>/..., missing-req/.
 set -euo pipefail
 
 ref="${1:?ref required}"
@@ -7,11 +7,15 @@ ref="${ref#refs/heads/}"
 
 case "$ref" in
   req/*) echo "${ref#req/}" ;;
-  auto-feature/*) echo "${ref#auto-feature/}" ;;
-  auto-fix/*) echo "${ref#auto-fix/}" ;;
+  cycle/*) echo "${ref#cycle/}" ;;
+  orchestrator/*) echo "${ref#orchestrator/}" ;;
   missing-req/*) echo "${ref#missing-req/}" ;;
+  worker/*)
+    rest="${ref#worker/}"
+    echo "${rest%%/*}"
+    ;;
   *)
-    echo "slug-from-ref: not a six-pack branch: ${ref}" >&2
+    echo "slug-from-ref: not a cycle branch: ${ref}" >&2
     exit 1
     ;;
 esac

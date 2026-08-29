@@ -1,6 +1,6 @@
 Implement only the single specified-test subtask below on this git worktree.
 
-Read `requirements/<slug>/overview.md`. Implement until this subtask’s specified test can pass. Do not add requirements. Do not edit files under `requirements/<slug>/` (that would change CYCLE). Do not edit `ORCHESTRATION.md` (the orchestrator owns that board). Do not edit `PROGRESS.md` (the orchestrator updates it after merge).
+Read `requirements/<slug>/overview.md`. Implement until this subtask’s specified test can pass. Do not add requirements. Do not edit files under `requirements/<slug>/` (that would change the cycle hash). Do not edit `CYCLE.md` or `DELTA.md` (the stepper owns the cycle record).
 
 Do not implement other specified tests. Do not load sibling subtask prompts or transcripts.
 

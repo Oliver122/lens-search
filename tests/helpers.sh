@@ -5,7 +5,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 # Policy tests are local-only; do not inherit CI push flags.
-unset OPEN_AUTO_FEATURE_PUSH OPEN_AUTO_FEATURE_MR OPEN_MISSING_REQ_PUSH OPEN_MISSING_REQ_COMMENT OPEN_AUTO_FIX_PUSH
+unset OPEN_AUTO_FEATURE_PUSH OPEN_AUTO_FEATURE_MR OPEN_MISSING_REQ_PUSH OPEN_MISSING_REQ_COMMENT OPEN_AUTO_FIX_PUSH WORKER_REVIEW
 
 make_repo() {
   local dir="$1"
@@ -13,9 +13,12 @@ make_repo() {
   git -C "$dir" init -b main >/dev/null
   git -C "$dir" config user.email test@example.com
   git -C "$dir" config user.name test
-  mkdir -p "$dir/scripts" "$dir/requirements/_template"
+  mkdir -p "$dir/scripts" "$dir/requirements/_template" "$dir/requirements/_defs"
   cp -a "$ROOT/scripts/." "$dir/scripts/"
   cp -a "$ROOT/requirements/_template/." "$dir/requirements/_template/"
+  if [[ -d "$ROOT/requirements/_defs" ]]; then
+    cp -a "$ROOT/requirements/_defs/." "$dir/requirements/_defs/"
+  fi
   echo x > "$dir/README.md"
   git -C "$dir" add README.md scripts requirements
   git -C "$dir" commit -m init >/dev/null

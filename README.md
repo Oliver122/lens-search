@@ -1,35 +1,36 @@
 # lens-search
 
-Personal product repo. `main` holds the product and merged RequirementSets. Agents do not commit on `main` or on `req/*`.
+Personal product repo. `main` holds the product and merged RequirementSets. Agents do not commit on `main`. The cycle stepper may land the orchestrator onto `req/<slug>` when opening the requirement PR; humans still approve that merge.
 
 ## Git layout
 
 | Branch | Who | Role |
 |---|---|---|
 | `main` | you (merge click) | Product + spec after freeze |
-| `req/<slug>` | you (`/specify`) | Human RequirementSet. Push opens auto-feature |
-| `auto-feature/<slug>` | coder | One hashed cycle, one MR to `main` |
-| `auto-fix/<slug>` | hardener | Child of the feature branch only. Merges back into the same MR |
-| `missing-req/<slug>` | bot + you | Halt. `MISSING.md` only. Then you specify and push `req/<slug>` (new CYCLE) |
+| `req/<slug>` | you (`/specify`) | Human RequirementSet. Push wakes the cycle |
+| `cycle/<slug>` | stepper | `CYCLE.md` + saved delta. What the PO opens |
+| `orchestrator/<slug>` | stepper | Integration branch; worker PRs merge here |
+| `worker/<slug>/<n>-<k>` | worker | One subtask attempt, PR → orchestrator |
+| `missing-req/<slug>` | bot + you | Halt. `MISSING.md` only. Then specify and push `req/<slug>` again |
 
-Push `req/<slug>` (when `missing-req/<slug>` is not open) creates `auto-feature/<slug>` from `main` plus `requirements/<slug>/`, writes `CYCLE` (hash of that tree), runs an **orchestrator** (not one coder for the whole set), and opens or updates **one** merge request `auto-feature/<slug>` → `main`. The orchestrator splits `specified-tests.md` into subtasks and runs subtask coders in parallel git worktrees, then merges them onto `auto-feature/<slug>`. Progress is in `ORCHESTRATION.md`. Bots never merge that MR. You freeze: approve and merge when GAPS is empty, missing-req is closed, and the tree hash still equals `CYCLE`.
+Push `req/<slug>` wakes `step-cycle.sh`: save delta vs `main`, open the orchestrator and split subtasks, then one worker PR at a time. Review merges or respawns the same subtask. When every subtask has merged, a requirement → `main` PR opens. Bots never merge that PR. You freeze: approve and merge when the record shows all subtasks merged, incomplete is empty, and the tree hash still matches.
 
-`GAPS.md` means a stated specified test is not met (implementation hole). `MISSING.md` means the spec is too thin (specify again; do not invent Gherkin).
+`CYCLE.md` is the cycle. `GAPS.md` on a worker is a bad review (respawn). `MISSING.md` means the spec is too thin (specify again; do not invent Gherkin).
 
 ```mermaid
 flowchart TD
-  R[reviewer] --> S["specify /specify"]
-  S -->|push req/slug| AF[auto-feature/slug]
-  AF --> O[orchestrator plus parallel subtask coders]
-  O --> C[subtask coder]
-  C -->|GAPS.md stated spec unmet| AX[auto-fix/slug]
-  AX --> H[hardener]
-  H -->|merge to feature same MR| AF
-  C -->|spec thin or missing| MR[missing-req/slug]
-  H -->|spec thin or missing| MR
-  MR -->|MISSING.md halt plus MR comment| S
-  S -->|push req/slug new CYCLE| AF
-  R -->|you approve merge| F[MR auto-feature to main]
+  S["specify /specify"] -->|push req/slug| W[step-cycle wake]
+  W --> D[save delta on cycle/slug]
+  D --> O[orchestrator/slug]
+  O --> C[worker PR next subtask]
+  C -->|good review| M[merge into orchestrator]
+  C -->|bad review| R[new worker same subtask]
+  R --> C
+  M -->|next subtask| C
+  M -->|all merged| P[PR req/slug to main]
+  C -->|spec thin| MR[missing-req/slug]
+  MR -->|MISSING.md plus incomplete| S
+  P -->|you approve merge| F[main]
 ```
 
 ## Commands

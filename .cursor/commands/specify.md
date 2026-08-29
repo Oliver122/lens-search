@@ -13,7 +13,7 @@ If `$ARGUMENTS` is empty, ask for a kebab-case feature slug and stop.
 
 1. `git fetch origin 2>/dev/null; git branch -a`
 2. If `missing-req/<slug>` exists (local or remote): check it out (create local tracking if needed). You are filling holes listed in `MISSING.md`. After the set is complete, tell me to push **`req/<slug>`** (that push starts a new CYCLE). Do not push `missing-req/<slug>` as the cycle trigger.
-3. Else: check out `req/<slug>`, creating it from `main` if it does not exist. Do not specify on `main`. Do not commit on `auto-feature/*` or `auto-fix/*`.
+3. Else: check out `req/<slug>`, creating it from `main` if it does not exist. Do not specify on `main`. Do not commit on `cycle/*`, `orchestrator/*`, or `worker/*`.
 
 ## RequirementSet
 
@@ -23,11 +23,41 @@ If that directory is missing, copy `requirements/_template/` into it, then repla
 
 Write:
 
-- `overview.md` — what is in, what is out, done when.
-- `specified-tests.md` — observable acceptance checks. These are the contract. Do not invent Gherkin files unless I already use them in this set.
+- `overview.md` — Catalog headings, then what is in, what is out, done when.
+- `specified-tests.md` — observable acceptance checks, each tagged with a slice. These are the contract. Do not invent Gherkin files unless I already use them in this set.
+- `requirements/_defs/<id>.md` — only when a shared definition is new and does not already live on the shelf.
 
-Do not create `CYCLE` (openAutoFeature writes it). Do not create `GAPS.md` (implementation). On `missing-req/<slug>`, do not invent extra files; keep `MISSING.md` until the human pushes `req/<slug>`. Put filled requirements on `req/<slug>` as `requirements/<slug>/`.
+Catalog storage (headings, not YAML):
 
-Interview me one question at a time until overview and specified-tests are enough for a coder to implement without guessing. Then stop. Tell me to commit on this branch and push `req/<slug>` to open auto-feature.
+```
+## Catalog
+
+### group
+
+<kebab-case-group>
+
+### slices
+
+<ui, backend, and/or process>
+
+### defs
+
+<kebab-case ids this set points at, or empty>
+```
+
+Specified tests: `N. [slice] text`. Closed slices: `ui` | `backend` | `process`.
+
+Do not create `CYCLE.md` or `DELTA.md` (the stepper writes the cycle record). Do not create `GAPS.md` (implementation). On `missing-req/<slug>`, do not invent extra files; keep `MISSING.md` until the human pushes `req/<slug>`. Put filled requirements on `req/<slug>` as `requirements/<slug>/`. New defs belong on `req/<slug>` under `requirements/_defs/`.
+
+## Interview
+
+Ask one question at a time.
+
+1. **group** — kebab-case catalog group for this set.
+2. **slices** — which closed slices this set has: `ui`, `backend`, `process` (one or more).
+3. **shared-vs-local** — for each shared concept that comes up (colors, layout, standard button/slider, whether a service connects, and any other language more than one set should share): is it **shared** (point at an existing `requirements/_defs/<id>.md`, or write a new one) or **local** (only this set; do not add a pointer)? Write pointers under Catalog `defs`. Do not invent a def that already exists; read the shelf first.
+4. Then overview in/out/done and specified tests until a coder can implement without guessing. Tag every numbered test with one of this set's slices.
+
+When the set is tagged, pointers resolve, and every test is sliced, stop. Tell me to commit on this branch and push `req/<slug>` to wake the cycle.
 
 You do not open MRs. You do not run coder or hardener.

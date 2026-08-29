@@ -26,7 +26,10 @@ if [[ -f "$out" ]]; then
   done < "$out"
 fi
 
-while IFS=$'\t' read -r num text; do
+while IFS= read -r row; do
+  num="${row%%$'\t'*}"
+  rest="${row#*$'\t'}"
+  text="${rest#*$'\t'}"
   if [[ "$num" == "$n" ]]; then
     old_state["${num}|${text}"]="$new_state"
   fi
@@ -42,7 +45,10 @@ done < <("${root}/scripts/split-specified-tests.sh" "$slug")
   echo
   echo "| # | specified test | state |"
   echo "|---|---|---|"
-  while IFS=$'\t' read -r num text; do
+  while IFS= read -r row; do
+    num="${row%%$'\t'*}"
+    rest="${row#*$'\t'}"
+    text="${rest#*$'\t'}"
     key="${num}|${text}"
     state="${old_state[$key]:-todo}"
     printf '| %s | %s | %s |\n' "$num" "$text" "$state"

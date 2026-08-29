@@ -11,20 +11,23 @@ cd "$tmp/repo"
 slug=widget
 mkdir -p "requirements/${slug}"
 echo in > "requirements/${slug}/overview.md"
-echo t > "requirements/${slug}/specified-tests.md"
+echo "1. A check" > "requirements/${slug}/specified-tests.md"
 git add requirements
 git commit -m req >/dev/null
 git checkout -b "req/${slug}" >/dev/null
 
-# Halt: missing-req exists -> openAutoFeature no-ops (no auto-feature branch)
 git checkout -b "missing-req/${slug}" main >/dev/null
 git checkout "req/${slug}" >/dev/null
-out="$(./scripts/open-auto-feature.sh "$slug")"
-echo "$out" | grep -q 'skip, missing-req'
-assert_fail "no auto-feature branch after skip" git rev-parse --verify "auto-feature/${slug}"
+./scripts/step-cycle.sh "$slug"
+rec="$(./scripts/cycle-record.sh load "$slug")"
+echo "$rec" | grep -q '| incomplete |'
+assert_fail "no orch while missing-req open" git rev-parse --verify "orchestrator/${slug}"
+assert_fail "no worker while missing-req open" git rev-parse --verify "worker/${slug}/1-1"
 
-# After missing-req is gone, empty dir fails
-git branch -D "missing-req/${slug}" >/dev/null
-git checkout -b "req/empty" main >/dev/null
+git checkout main >/dev/null
+git checkout -b "req/empty" >/dev/null
 mkdir -p requirements/empty
-assert_fail "empty req" ./scripts/open-auto-feature.sh empty
+./scripts/step-cycle.sh empty
+rec="$(./scripts/cycle-record.sh load empty)"
+echo "$rec" | grep -q '| incomplete |'
+git rev-parse --verify "missing-req/empty" >/dev/null

@@ -5,7 +5,6 @@ source tests/helpers.sh
 
 grep -q 'CURSOR_API_KEY' "$ROOT/.github/workflows/auto-feature.yml"
 grep -q 'install-cursor-cli.sh' "$ROOT/.github/workflows/auto-feature.yml"
-grep -q 'install-cursor-cli.sh' "$ROOT/.github/workflows/auto-fix.yml"
 
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
@@ -15,9 +14,10 @@ slug=keycheck
 git checkout -b "req/${slug}" >/dev/null
 mkdir -p "requirements/${slug}"
 echo in > "requirements/${slug}/overview.md"
-echo t > "requirements/${slug}/specified-tests.md"
+echo "1. A check" > "requirements/${slug}/specified-tests.md"
 git add requirements && git commit -m spec >/dev/null
-./scripts/open-auto-feature.sh "$slug"
+./scripts/save-req-delta.sh "$slug" >/dev/null
+./scripts/open-orchestrator.sh "$slug" >/dev/null
 unset CURSOR_API_KEY || true
-assert_fail "coder without key" ./scripts/run-coder.sh "$slug"
-assert_fail "orchestrator without key" ./scripts/run-orchestrator.sh "$slug"
+assert_fail "open-worker without key" ./scripts/open-worker.sh "$slug"
+assert_fail "step-cycle worker without key" ./scripts/step-cycle.sh "$slug"

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Print one subtask coder prompt: overview + this subtask only (no sibling tests or prompts).
+# Build one test plus pointed defs: overview + this subtask only (no sibling tests or prompts).
 set -euo pipefail
 
 slug="${1:?slug required}"
@@ -20,7 +20,10 @@ fi
 
 text=""
 found=0
-while IFS=$'\t' read -r num line; do
+while IFS= read -r row; do
+  num="${row%%$'\t'*}"
+  rest="${row#*$'\t'}"
+  line="${rest#*$'\t'}"
   if [[ "$num" == "$n" ]]; then
     text="$line"
     found=1
@@ -33,6 +36,10 @@ if [[ "$found" -ne 1 ]]; then
   exit 1
 fi
 
+row="$("${root}/scripts/read-catalog.sh" "$slug")"
+defs="${row#*$'\t'}"
+defs="${defs#*$'\t'}"
+
 cat "$template"
 echo
 echo "Slug: ${slug}"
@@ -42,6 +49,12 @@ echo
 echo "--- overview.md ---"
 cat "$overview"
 echo
+if [[ -n "$defs" ]]; then
+  echo "--- pointed defs ---"
+  IFS=',' read -ra ids <<< "$defs"
+  "${root}/scripts/read-defs.sh" "${ids[@]}"
+  echo
+fi
 echo "--- your subtask (specified test ${n} only) ---"
 echo "${n}. ${text}"
 echo

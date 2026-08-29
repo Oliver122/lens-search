@@ -30,7 +30,10 @@ if [[ $# -ge 3 ]]; then
     echo "write-orchestration: state must be running|done|blocked" >&2
     exit 1
   fi
-  while IFS=$'\t' read -r num text; do
+  while IFS= read -r row; do
+    num="${row%%$'\t'*}"
+    rest="${row#*$'\t'}"
+    text="${rest#*$'\t'}"
     [[ "$num" == "$n" ]] || continue
     old_state["${num}|${text}"]="$new_state"
   done < <("$split" "$slug")
@@ -45,7 +48,10 @@ fi
   echo
   echo "| # | subtask | state |"
   echo "|---|---|---|"
-  while IFS=$'\t' read -r num text; do
+  while IFS= read -r row; do
+    num="${row%%$'\t'*}"
+    rest="${row#*$'\t'}"
+    text="${rest#*$'\t'}"
     key="${num}|${text}"
     state="${old_state[$key]:-running}"
     printf '| %s | %s | %s |\n' "$num" "$text" "$state"

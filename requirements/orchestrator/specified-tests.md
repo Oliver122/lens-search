@@ -2,12 +2,11 @@
 
 Each item is an observable check. A coder treats an unmet item as a gap (`GAPS.md`), not as a license to widen the spec.
 
-1. Push of `req/<slug>` (when `missing-req/<slug>` is not open) still runs `openAutoFeature` (CYCLE, `auto-feature/<slug>`, one MR to `main`). The next agent in that job is an orchestrator, not a single coder for the whole RequirementSet.
-2. The orchestrator splits `requirements/<slug>/specified-tests.md` into two or more subtasks when that file has more than one specified test. A RequirementSet with a single specified test may yield one subtask.
-3. Each subtask coder is a separate agent invocation. Its prompt contains that subtask, `overview.md`, and not the transcripts or full prompts of sibling subtasks.
-4. Subtask coders run in parallel in distinct git worktrees. They do not share one working tree while running.
-5. When a subtask coder finishes, the orchestrator merges its worktree into `auto-feature/<slug>`. The MR head is that branch, not a worktree branch left unmerged.
-6. If two worktrees conflict on merge, the orchestrator does not invent a spec. It records the conflict as blocked in `ORCHESTRATION.md` and either retries a serial merge after the other subtask lands or opens `GAPS.md` / missing-req per existing rules (unmet test vs thin spec). It does not force-merge through conflicts.
-7. `ORCHESTRATION.md` exists on `auto-feature/<slug>` during the cycle and lists each subtask with state `running`, `done`, or `blocked`, updated as subtasks start and finish.
-8. Unmet specified tests of the product RequirementSet still produce `GAPS.md` on `auto-feature/<slug>` (hardener path unchanged). A spec too thin to split or implement without guessing still opens `missing-req/<slug>` with `MISSING.md` only.
-9. Bots still do not merge the auto-feature MR to `main`. `CYCLE` still hashes the RequirementSet tree as today.
+1. [process] Push of `req/<slug>` wakes `step-cycle.sh` (not `open-auto-feature` / one coder job). The first legal step saves the requirement delta versus `main` on `cycle/<slug>` as `DELTA.md` plus `CYCLE.md`.
+2. [process] A later wake opens `orchestrator/<slug>` and splits `requirements/<slug>/specified-tests.md` into two or more subtasks when that file has more than one specified test. A RequirementSet with a single specified test may yield one subtask.
+3. [process] Each worker is a separate agent invocation. Its prompt contains that subtask, `overview.md`, and not the transcripts or full prompts of sibling subtasks.
+4. [process] Workers are sequential: one worker branch and PR at a time. A second worker is not opened while another is in-review.
+5. [process] A good review merges the worker into `orchestrator/<slug>`. A bad review respawns the same subtask on a new worker branch (new attempt).
+6. [process] `CYCLE.md` on `cycle/<slug>` is what the PO opens: it lists the saved delta, orchestrator branch, each subtask’s worker/PR/state (including respawned), incomplete-requirement, and the requirement PR.
+7. [process] The requirement → `main` PR opens only after every subtask has merged. Bots do not merge that PR and do not enable auto-merge.
+8. [process] A spec too thin to split or implement without guessing opens `missing-req/<slug>` with `MISSING.md` only and sets `incomplete` on the cycle record. Resume after timeout, pending review, or a held lease is the same `step-cycle.sh` wake.

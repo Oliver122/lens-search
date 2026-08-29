@@ -84,7 +84,8 @@ trap cleanup EXIT
 
 for row in "${rows[@]}"; do
   n="${row%%$'\t'*}"
-  texts["$n"]="${row#*$'\t'}"
+  rest="${row#*$'\t'}"
+  texts["$n"]="${rest#*$'\t'}"
   nums+=("$n")
 done
 

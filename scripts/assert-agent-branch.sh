@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Agents commit only on auto-feature/*, auto-fix/*, or missing-req/*.
+# Agents commit only on cycle/*, orchestrator/*, worker/*, or missing-req/*.
 set -euo pipefail
 
 branch="${1:-}"
@@ -12,10 +12,10 @@ if [[ -z "$branch" ]]; then
 fi
 
 case "$branch" in
-  auto-feature/* | auto-fix/* | missing-req/*)
+  cycle/* | orchestrator/* | worker/* | missing-req/*)
     exit 0
     ;;
-  main | req/*)
+  main | req/* | auto-feature/* | auto-fix/*)
     echo "assertAgentBranch: refuse commits on ${branch}" >&2
     exit 1
     ;;

@@ -8,6 +8,12 @@ source tests/helpers.sh
 test -f requirements/_template/overview.md
 test -f requirements/_template/specified-tests.md
 test ! -e requirements/_template/CYCLE
+test -d requirements/_defs
+grep -q '^## Catalog' requirements/_template/overview.md
+grep -q '^### group' requirements/_template/overview.md
+grep -q '^### slices' requirements/_template/overview.md
+grep -q '^### defs' requirements/_template/overview.md
+grep -qE '^[0-9]+\. \[[^]]+\]' requirements/_template/specified-tests.md
 
 # Copied set layout: overview + specified-tests, no CYCLE until openAutoFeature
 tmp="$(mktemp -d)"
@@ -25,4 +31,8 @@ test -f .cursor/commands/specify.md
 grep -q 'requirements/<slug>/' .cursor/commands/specify.md
 grep -q 'req/<slug>' .cursor/commands/specify.md
 grep -q 'missing-req/<slug>' .cursor/commands/specify.md
-grep -q 'Do not create `CYCLE`' .cursor/commands/specify.md
+grep -q 'Do not create `CYCLE.md`' .cursor/commands/specify.md
+grep -q 'group' .cursor/commands/specify.md
+grep -q 'slices' .cursor/commands/specify.md
+grep -q 'shared-vs-local' .cursor/commands/specify.md
+grep -q 'requirements/_defs/' .cursor/commands/specify.md

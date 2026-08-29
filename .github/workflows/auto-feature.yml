@@ -1,16 +1,25 @@
-name: auto-feature
+name: cycle
 
 on:
   push:
     branches:
       - "req/**"
+  pull_request_review:
+    types: [submitted]
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+    inputs:
+      slug:
+        description: Feature slug
+        required: false
 
 permissions:
   contents: write
   pull-requests: write
 
 jobs:
-  open:
+  step:
     runs-on: ubuntu-latest
     timeout-minutes: 120
     steps:
@@ -18,65 +27,47 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Slug from req branch
-        id: slug
-        run: |
-          slug="$(./scripts/slug-from-ref.sh "${GITHUB_REF_NAME}")"
-          echo "slug=${slug}" >> "$GITHUB_OUTPUT"
-
-      - name: Skip if missing-req is open
-        id: halt
-        run: |
-          if git ls-remote --exit-code --heads origin "missing-req/${{ steps.slug.outputs.slug }}" >/dev/null; then
-            echo "open=false" >> "$GITHUB_OUTPUT"
-            echo "openAutoFeature: skip, missing-req open"
-          else
-            echo "open=true" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: openAutoFeature
-        if: steps.halt.outputs.open == 'true'
+      - name: Resolve slugs
+        id: slugs
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GIT_AUTHOR_NAME: auto-feature
-          GIT_AUTHOR_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
-          GIT_COMMITTER_NAME: auto-feature
-          GIT_COMMITTER_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
-          OPEN_AUTO_FEATURE_PUSH: "1"
-          OPEN_AUTO_FEATURE_MR: "1"
-          OPEN_AUTO_FEATURE_BASE: main
-        run: ./scripts/open-auto-feature.sh "${{ steps.slug.outputs.slug }}"
+          EVENT: ${{ github.event_name }}
+          DISPATCH_SLUG: ${{ inputs.slug }}
+          REVIEW_HEAD: ${{ github.event.pull_request.head.ref }}
+        run: |
+          set -euo pipefail
+          slugs=""
+          case "${EVENT}" in
+            workflow_dispatch)
+              slugs="${DISPATCH_SLUG}"
+              ;;
+            pull_request_review)
+              slugs="$(./scripts/slug-from-ref.sh "${REVIEW_HEAD}")"
+              ;;
+            schedule)
+              slugs="$(git ls-remote --heads origin 'cycle/*' | awk -F/ '{print $NF}' | tr '\n' ' ')"
+              ;;
+            *)
+              slugs="$(./scripts/slug-from-ref.sh "${GITHUB_REF_NAME}")"
+              ;;
+          esac
+          echo "slugs=${slugs}" >> "$GITHUB_OUTPUT"
 
       - name: Install Cursor CLI
-        if: steps.halt.outputs.open == 'true'
+        if: steps.slugs.outputs.slugs != ''
         run: ./scripts/install-cursor-cli.sh
 
-      - name: Coder
-        if: steps.halt.outputs.open == 'true'
+      - name: Step cycle
+        if: steps.slugs.outputs.slugs != ''
         env:
           CURSOR_API_KEY: ${{ secrets.CURSOR_API_KEY }}
-          GIT_AUTHOR_NAME: auto-feature
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GIT_AUTHOR_NAME: cycle
           GIT_AUTHOR_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
-          OPEN_AUTO_FEATURE_PUSH: "1"
+          GIT_COMMITTER_NAME: cycle
+          GIT_COMMITTER_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
         run: |
           echo "$HOME/.cursor/bin" >> "$GITHUB_PATH"
           export PATH="$HOME/.cursor/bin:$PATH"
-          ./scripts/run-coder.sh "${{ steps.slug.outputs.slug }}"
-
-      # GITHUB_TOKEN pushes do not start other workflows. If coder wrote GAPS.md, harden here.
-      - name: Auto-fix in-job when GAPS.md exists
-        if: steps.halt.outputs.open == 'true'
-        env:
-          CURSOR_API_KEY: ${{ secrets.CURSOR_API_KEY }}
-          GIT_AUTHOR_NAME: auto-fix
-          GIT_AUTHOR_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
-          OPEN_AUTO_FIX_PUSH: "1"
-        run: |
-          export PATH="$HOME/.cursor/bin:$PATH"
-          slug="${{ steps.slug.outputs.slug }}"
-          git checkout "auto-feature/${slug}"
-          if [[ -f GAPS.md ]]; then
-            ./scripts/open-auto-fix.sh "$slug"
-            ./scripts/run-hardener.sh "$slug"
-            ./scripts/merge-auto-fix.sh "$slug"
-          fi
+          for slug in ${{ steps.slugs.outputs.slugs }}; do
+            ./scripts/step-cycle.sh "$slug"
+          done

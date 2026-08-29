@@ -37,13 +37,18 @@ fi
   echo "|---|---|---|"
   n=0
   while IFS= read -r line; do
-    if [[ "$line" =~ ^([0-9]+)\.\ (.+)$ ]]; then
+    if [[ "$line" =~ ^([0-9]+)\.\ \[([^]]+)\][[:space:]]+(.*)$ ]]; then
+      n="${BASH_REMATCH[1]}"
+      text="${BASH_REMATCH[3]}"
+    elif [[ "$line" =~ ^([0-9]+)\.\ (.+)$ ]]; then
       n="${BASH_REMATCH[1]}"
       text="${BASH_REMATCH[2]}"
-      key="${n}|${text}"
-      state="${old_state[$key]:-todo}"
-      printf '| %s | %s | %s |\n' "$n" "$text" "$state"
+    else
+      continue
     fi
+    key="${n}|${text}"
+    state="${old_state[$key]:-todo}"
+    printf '| %s | %s | %s |\n' "$n" "$text" "$state"
   done < "$tests"
 } > "$out"
 

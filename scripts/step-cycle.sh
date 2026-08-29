@@ -38,7 +38,7 @@ lease_held() {
 
 signal_incomplete() {
   local reason="$1"
-  "${root}/scripts/open-missing-req.sh" "$slug" "$reason"
+  bash "${root}/scripts/open-missing-req.sh" "$slug" "$reason"
   git -C "$root" checkout -f "cycle/${slug}" >/dev/null 2>&1 || true
   cycle_record_reload
   CR_INCOMPLETE="$reason"
@@ -72,7 +72,7 @@ assert_req_shape() {
     rm -rf "$wt"
     return 1
   fi
-  err="$(cd "$wt" && "${root}/scripts/assert-req-shape.sh" "$slug" 2>&1)" && rc=0 || rc=$?
+  err="$(cd "$wt" && bash "${root}/scripts/assert-req-shape.sh" "$slug" 2>&1)" && rc=0 || rc=$?
   git worktree remove --force "$wt" >/dev/null 2>&1 || rm -rf "$wt"
   if [[ "$rc" -ne 0 ]]; then
     echo "${err:-requirement shape failed}"
@@ -117,7 +117,7 @@ if [[ -z "${CR_DELTA:-}" ]]; then
     signal_incomplete "empty req/${slug}"
     exit 0
   fi
-  "${root}/scripts/save-req-delta.sh" "$slug"
+  bash "${root}/scripts/save-req-delta.sh" "$slug"
   echo "step-cycle: ${slug} saved delta"
   exit 0
 fi
@@ -127,7 +127,7 @@ if [[ -z "${CR_ORCH:-}" ]]; then
     signal_incomplete "${err:-requirement shape failed}"
     exit 0
   fi
-  "${root}/scripts/open-orchestrator.sh" "$slug"
+  bash "${root}/scripts/open-orchestrator.sh" "$slug"
   echo "step-cycle: ${slug} opened orchestrator"
   exit 0
 fi
@@ -160,19 +160,19 @@ if [[ ${#CR_N[@]} -gt 0 ]]; then
 fi
 
 if [[ -n "$in_review" ]]; then
-  "${root}/scripts/apply-worker-review.sh" "$slug"
+  bash "${root}/scripts/apply-worker-review.sh" "$slug"
   echo "step-cycle: ${slug} applied review"
   exit 0
 fi
 
 if [[ -n "$pending" ]]; then
-  "${root}/scripts/open-worker.sh" "$slug"
+  bash "${root}/scripts/open-worker.sh" "$slug"
   echo "step-cycle: ${slug} opened worker"
   exit 0
 fi
 
 if [[ "$unmerged" -eq 0 && -z "${CR_REQ_PR:-}" ]]; then
-  "${root}/scripts/open-requirement-pr.sh" "$slug"
+  bash "${root}/scripts/open-requirement-pr.sh" "$slug"
   echo "step-cycle: ${slug} opened requirement PR"
   exit 0
 fi

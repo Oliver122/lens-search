@@ -21,7 +21,8 @@ fi
 orch="orchestrator/${slug}"
 base="$(cycle_record_base_ref)"
 git checkout -B "$orch" "$base" >/dev/null 2>&1
-"${root}/scripts/assert-agent-branch.sh" "$orch"
+cycle_record_chmod_scripts
+bash "${root}/scripts/assert-agent-branch.sh" "$orch"
 
 git checkout "$req_ref" -- "requirements/${slug}"
 if [[ ! -f "requirements/${slug}/specified-tests.md" ]]; then
@@ -29,7 +30,7 @@ if [[ ! -f "requirements/${slug}/specified-tests.md" ]]; then
   exit 1
 fi
 
-hash="$("${root}/scripts/cycle-hash.sh" "$slug")"
+hash="$(bash "${root}/scripts/cycle-hash.sh" "$slug")"
 printf '%s\n' "$hash" > "requirements/${slug}/CYCLE"
 git add "requirements/${slug}"
 if [[ -n "$(git status --porcelain -- "requirements/${slug}")" ]]; then
@@ -47,7 +48,7 @@ while IFS= read -r row; do
   text="${rest#*$'\t'}"
   new_n+=("$n")
   new_text+=("$text")
-done < <("${root}/scripts/split-specified-tests.sh" "$slug")
+done < <(bash "${root}/scripts/split-specified-tests.sh" "$slug")
 
 cycle_record_ensure_branch "$slug"
 cycle_record_parse CYCLE.md

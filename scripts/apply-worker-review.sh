@@ -55,7 +55,8 @@ case "$verdict" in
     ;;
   approve)
     git checkout "$orch" >/dev/null 2>&1
-    "${root}/scripts/assert-agent-branch.sh" "$orch"
+    cycle_record_chmod_scripts
+    bash "${root}/scripts/assert-agent-branch.sh" "$orch"
     if ! git -c user.email="${GIT_AUTHOR_EMAIL:-bot@local}" \
       -c user.name="${GIT_AUTHOR_NAME:-orchestrator}" \
       merge --no-ff -m "orchestrator(${slug}): merge ${worker}" "$worker"; then

@@ -48,7 +48,9 @@ rec="$(./scripts/cycle-record.sh load "$slug")"
 echo "$rec" | grep -q '| delta | DELTA.md |'
 assert_fail "orch not yet" git rev-parse --verify "orchestrator/${slug}"
 
-./scripts/step-cycle.sh "$slug"
+# cycle/ snapshots main; those scripts may be 0644. Next wake must still run.
+chmod a-x scripts/*.sh
+bash ./scripts/step-cycle.sh "$slug"
 git rev-parse --verify "orchestrator/${slug}" >/dev/null
 assert_fail "worker not yet" git rev-parse --verify "worker/${slug}/1-1"
 

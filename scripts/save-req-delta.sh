@@ -3,10 +3,12 @@
 set -euo pipefail
 
 slug="${1:?slug required}"
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+lib="${CYCLE_SCRIPTS:-$script_dir}"
 root="$(git rev-parse --show-toplevel)"
 cd "$root"
 # shellcheck source=cycle-record.sh
-source "${root}/scripts/cycle-record.sh"
+source "${lib}/cycle-record.sh"
 
 req_br="req/${slug}"
 if ! git rev-parse --verify "refs/heads/${req_br}" >/dev/null 2>&1 \
@@ -27,9 +29,9 @@ trap 'git -C "$root" worktree remove --force "$wt" >/dev/null 2>&1 || rm -rf "$w
 git worktree add --detach "$wt" "$req_ref" >/dev/null 2>&1
 hash="$(
   cd "$wt"
-  bash "${root}/scripts/cycle-hash.sh" "$slug"
+  bash "${lib}/cycle-hash.sh" "$slug"
 )"
-mapfile -t def_paths < <(cd "$wt" && bash "${root}/scripts/checkout-req-defs.sh" --list "$slug")
+mapfile -t def_paths < <(cd "$wt" && bash "${lib}/checkout-req-defs.sh" --list "$slug")
 if [[ ${#def_paths[@]} -gt 0 ]]; then
   delta="$(git diff --no-color "$base" "$req_ref" -- "requirements/${slug}" \
     "${def_paths[@]}" ":(exclude)requirements/${slug}/CYCLE" || true)"

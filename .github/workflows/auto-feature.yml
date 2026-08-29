@@ -69,5 +69,10 @@ jobs:
           echo "$HOME/.cursor/bin" >> "$GITHUB_PATH"
           export PATH="$HOME/.cursor/bin:$PATH"
           for slug in ${{ steps.slugs.outputs.slugs }}; do
+            # cycle/ and worker trees are based on main. Wake scripts live on
+            # req/<slug> until freeze, so dispatch/cron/review must start there.
+            if git rev-parse --verify "origin/req/${slug}" >/dev/null 2>&1; then
+              git checkout -f --detach "origin/req/${slug}"
+            fi
             bash ./scripts/step-cycle.sh "$slug"
           done

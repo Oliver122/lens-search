@@ -42,6 +42,7 @@ git add requirements && git commit -m spec >/dev/null
 git rev-parse --verify "worker/${slug}/1-1" >/dev/null
 git checkout "worker/${slug}/1-1" >/dev/null
 test -f subtask-1.txt
+test -f requirements/_defs/hook-shape.md
 
 rec="$(./scripts/cycle-record.sh load "$slug")"
 echo "$rec" | grep -q '| 1 | First observable check | in-review | worker/cam/1-1 |'

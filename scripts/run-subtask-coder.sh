@@ -52,7 +52,7 @@ author_email="${GIT_AUTHOR_EMAIL:-bot@local}"
 author_name="${GIT_AUTHOR_NAME:-auto-feature}"
 
 model="${CURSOR_AGENT_MODEL:-cursor-grok-4.6-medium}"
-log="${root}/scripts/ci-agent-log.py"
+log="${script_dir}/ci-agent-log.py"
 echo "run-subtask-coder: slug=${slug} subtask=${n} model=${model} tree=${root}"
 
 # Subtask worktrees are not the MR head; never push from here.

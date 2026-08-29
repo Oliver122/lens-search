@@ -10,8 +10,32 @@ fi
 
 root="$(git rev-parse --show-toplevel)"
 cd "$root"
+# Pin wake scripts before cycle_record_ensure_branch checkouts cycle/<slug>
+# (that tree is based on main). Prefer req/<slug>: later wakes often start
+# already on cycle/, whose scripts are main's.
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+CYCLE_SCRIPTS="$(mktemp -d)"
+export CYCLE_SCRIPTS
+req_scripts_ref=""
+if git rev-parse --verify "refs/heads/req/${slug}" >/dev/null 2>&1; then
+  req_scripts_ref="req/${slug}"
+elif git rev-parse --verify "refs/remotes/origin/req/${slug}" >/dev/null 2>&1; then
+  req_scripts_ref="origin/req/${slug}"
+fi
+if [[ -n "$req_scripts_ref" ]] && git cat-file -e "${req_scripts_ref}:scripts/step-cycle.sh" 2>/dev/null; then
+  pin_wt="$(mktemp -d)"
+  if git worktree add --detach "$pin_wt" "$req_scripts_ref" >/dev/null 2>&1; then
+    cp -a "${pin_wt}/scripts/." "${CYCLE_SCRIPTS}/"
+    git worktree remove --force "$pin_wt" >/dev/null 2>&1 || rm -rf "$pin_wt"
+  else
+    rm -rf "$pin_wt"
+    cp -a "${script_dir}/." "${CYCLE_SCRIPTS}/"
+  fi
+else
+  cp -a "${script_dir}/." "${CYCLE_SCRIPTS}/"
+fi
 # shellcheck source=cycle-record.sh
-source "${root}/scripts/cycle-record.sh"
+source "${CYCLE_SCRIPTS}/cycle-record.sh"
 
 cycle_record_reload() {
   cycle_record_ensure_branch "$slug"
@@ -38,7 +62,7 @@ lease_held() {
 
 signal_incomplete() {
   local reason="$1"
-  bash "${root}/scripts/open-missing-req.sh" "$slug" "$reason"
+  bash "${CYCLE_SCRIPTS}/open-missing-req.sh" "$slug" "$reason"
   git -C "$root" checkout -f "cycle/${slug}" >/dev/null 2>&1 || true
   cycle_record_reload
   CR_INCOMPLETE="$reason"
@@ -72,7 +96,7 @@ assert_req_shape() {
     rm -rf "$wt"
     return 1
   fi
-  err="$(cd "$wt" && bash "${root}/scripts/assert-req-shape.sh" "$slug" 2>&1)" && rc=0 || rc=$?
+  err="$(cd "$wt" && bash "${CYCLE_SCRIPTS}/assert-req-shape.sh" "$slug" 2>&1)" && rc=0 || rc=$?
   git worktree remove --force "$wt" >/dev/null 2>&1 || rm -rf "$wt"
   if [[ "$rc" -ne 0 ]]; then
     echo "${err:-requirement shape failed}"
@@ -96,6 +120,7 @@ release_lease() {
   cycle_record_reload
   CR_LEASE=""
   cycle_record_write "release"
+  rm -rf "${CYCLE_SCRIPTS:-}"
 }
 trap release_lease EXIT
 
@@ -117,7 +142,7 @@ if [[ -z "${CR_DELTA:-}" ]]; then
     signal_incomplete "empty req/${slug}"
     exit 0
   fi
-  bash "${root}/scripts/save-req-delta.sh" "$slug"
+  bash "${CYCLE_SCRIPTS}/save-req-delta.sh" "$slug"
   echo "step-cycle: ${slug} saved delta"
   exit 0
 fi
@@ -127,7 +152,7 @@ if [[ -z "${CR_ORCH:-}" ]]; then
     signal_incomplete "${err:-requirement shape failed}"
     exit 0
   fi
-  bash "${root}/scripts/open-orchestrator.sh" "$slug"
+  bash "${CYCLE_SCRIPTS}/open-orchestrator.sh" "$slug"
   echo "step-cycle: ${slug} opened orchestrator"
   exit 0
 fi
@@ -160,19 +185,19 @@ if [[ ${#CR_N[@]} -gt 0 ]]; then
 fi
 
 if [[ -n "$in_review" ]]; then
-  bash "${root}/scripts/apply-worker-review.sh" "$slug"
+  bash "${CYCLE_SCRIPTS}/apply-worker-review.sh" "$slug"
   echo "step-cycle: ${slug} applied review"
   exit 0
 fi
 
 if [[ -n "$pending" ]]; then
-  bash "${root}/scripts/open-worker.sh" "$slug"
+  bash "${CYCLE_SCRIPTS}/open-worker.sh" "$slug"
   echo "step-cycle: ${slug} opened worker"
   exit 0
 fi
 
 if [[ "$unmerged" -eq 0 && -z "${CR_REQ_PR:-}" ]]; then
-  bash "${root}/scripts/open-requirement-pr.sh" "$slug"
+  bash "${CYCLE_SCRIPTS}/open-requirement-pr.sh" "$slug"
   echo "step-cycle: ${slug} opened requirement PR"
   exit 0
 fi

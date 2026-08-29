@@ -3,10 +3,12 @@
 set -euo pipefail
 
 slug="${1:?slug required}"
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+lib="${CYCLE_SCRIPTS:-$script_dir}"
 root="$(git rev-parse --show-toplevel)"
 cd "$root"
 # shellcheck source=cycle-record.sh
-source "${root}/scripts/cycle-record.sh"
+source "${lib}/cycle-record.sh"
 
 cycle_record_ensure_branch "$slug"
 cycle_record_parse CYCLE.md
@@ -55,7 +57,7 @@ case "$verdict" in
     ;;
   approve)
     git checkout -f "$orch" >/dev/null
-    bash "${root}/scripts/assert-agent-branch.sh" "$orch"
+    bash "${lib}/assert-agent-branch.sh" "$orch"
     if ! git -c user.email="${GIT_AUTHOR_EMAIL:-bot@local}" \
       -c user.name="${GIT_AUTHOR_NAME:-orchestrator}" \
       merge --no-ff -m "orchestrator(${slug}): merge ${worker}" "$worker"; then

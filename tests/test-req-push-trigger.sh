@@ -9,6 +9,7 @@ grep -q 'step-cycle.sh' "$wf"
 grep -q 'pull_request_review' "$wf"
 grep -q 'schedule:' "$wf"
 grep -q 'workflow_dispatch' "$wf"
+grep -q 'origin/req/' "$wf"
 if grep -q 'open-auto-feature.sh' "$wf"; then
   echo "workflow must wake step-cycle, not open-auto-feature" >&2
   exit 1

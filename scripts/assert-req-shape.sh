@@ -3,6 +3,8 @@
 set -euo pipefail
 
 slug="${1:?slug required}"
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+lib="${CYCLE_SCRIPTS:-$script_dir}"
 root="$(git rev-parse --show-toplevel)"
 overview="${root}/requirements/${slug}/overview.md"
 tests="${root}/requirements/${slug}/specified-tests.md"
@@ -19,7 +21,7 @@ if ! grep -qE '^##[[:space:]]+Catalog[[:space:]]*$' "$overview"; then
   fail "missing Catalog"
 fi
 
-row="$(bash "${root}/scripts/read-catalog.sh" "$slug")"
+row="$(bash "${lib}/read-catalog.sh" "$slug")"
 group="${row%%$'\t'*}"
 rest="${row#*$'\t'}"
 slices="${rest%%$'\t'*}"
@@ -54,7 +56,7 @@ while IFS= read -r row; do
     ui|backend|process) ;;
     *) fail "unknown slice '${slice}'" ;;
   esac
-done < <(bash "${root}/scripts/split-specified-tests.sh" "$slug")
+done < <(bash "${lib}/split-specified-tests.sh" "$slug")
 
 if [[ "$count" -eq 0 ]]; then
   fail "no numbered tests"

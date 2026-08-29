@@ -15,6 +15,9 @@ CR_STATE=()
 CR_WORKER=()
 CR_PR=()
 CR_ATTEMPT=()
+# After cycle/ checkout, ${root}/scripts is main. Helpers stay next to this file
+# (or in CYCLE_SCRIPTS when the wake pinned them).
+_CR_LIB="${CYCLE_SCRIPTS:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}"
 
 cycle_record_trim() {
   local s="${1-}"
@@ -183,7 +186,7 @@ cycle_record_ensure_branch() {
       -c user.name="${GIT_AUTHOR_NAME:-cycle}" \
       commit -m "cycle(${slug}): open record" >/dev/null
   fi
-  bash "${root}/scripts/assert-agent-branch.sh" "$br"
+  bash "${_CR_LIB}/assert-agent-branch.sh" "$br"
 }
 
 cycle_record_load() {

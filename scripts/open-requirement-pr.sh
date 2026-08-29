@@ -3,10 +3,12 @@
 set -euo pipefail
 
 slug="${1:?slug required}"
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+lib="${CYCLE_SCRIPTS:-$script_dir}"
 root="$(git rev-parse --show-toplevel)"
 cd "$root"
 # shellcheck source=cycle-record.sh
-source "${root}/scripts/cycle-record.sh"
+source "${lib}/cycle-record.sh"
 
 cycle_record_ensure_branch "$slug"
 cycle_record_parse CYCLE.md

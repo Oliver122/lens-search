@@ -3,10 +3,12 @@
 set -euo pipefail
 
 slug="${1:?slug required}"
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+lib="${CYCLE_SCRIPTS:-$script_dir}"
 root="$(git rev-parse --show-toplevel)"
 cd "$root"
 # shellcheck source=cycle-record.sh
-source "${root}/scripts/cycle-record.sh"
+source "${lib}/cycle-record.sh"
 
 req_br="req/${slug}"
 if git rev-parse --verify "refs/heads/${req_br}" >/dev/null 2>&1; then
@@ -21,16 +23,16 @@ fi
 orch="orchestrator/${slug}"
 base="$(cycle_record_base_ref)"
 git checkout -f -B "$orch" "$base" >/dev/null
-bash "${root}/scripts/assert-agent-branch.sh" "$orch"
+bash "${lib}/assert-agent-branch.sh" "$orch"
 
 git checkout "$req_ref" -- "requirements/${slug}"
 if [[ ! -f "requirements/${slug}/specified-tests.md" ]]; then
   echo "open-orchestrator: missing specified-tests.md" >&2
   exit 1
 fi
-bash "${root}/scripts/checkout-req-defs.sh" "$slug"
+bash "${lib}/checkout-req-defs.sh" "$slug"
 
-hash="$(bash "${root}/scripts/cycle-hash.sh" "$slug")"
+hash="$(bash "${lib}/cycle-hash.sh" "$slug")"
 printf '%s\n' "$hash" > "requirements/${slug}/CYCLE"
 git add "requirements/${slug}"
 if [[ -d requirements/_defs ]]; then
@@ -51,7 +53,7 @@ while IFS= read -r row; do
   text="${rest#*$'\t'}"
   new_n+=("$n")
   new_text+=("$text")
-done < <(bash "${root}/scripts/split-specified-tests.sh" "$slug")
+done < <(bash "${lib}/split-specified-tests.sh" "$slug")
 
 cycle_record_ensure_branch "$slug"
 cycle_record_parse CYCLE.md

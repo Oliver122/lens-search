@@ -3,10 +3,12 @@
 set -euo pipefail
 
 slug="${1:?slug required}"
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+lib="${CYCLE_SCRIPTS:-$script_dir}"
 root="$(git rev-parse --show-toplevel)"
 cd "$root"
 # shellcheck source=cycle-record.sh
-source "${root}/scripts/cycle-record.sh"
+source "${lib}/cycle-record.sh"
 
 if [[ -z "${CURSOR_API_KEY:-}" ]]; then
   echo "open-worker: CURSOR_API_KEY is unset" >&2
@@ -66,14 +68,14 @@ fi
 
 (
   cd "$wt"
-  bash "${root}/scripts/checkout-req-defs.sh" "$slug"
+  bash "${lib}/checkout-req-defs.sh" "$slug"
   if [[ -n "$(git status --porcelain -- requirements/_defs)" ]]; then
     git add requirements/_defs
     git -c user.email="${GIT_AUTHOR_EMAIL:-bot@local}" \
       -c user.name="${GIT_AUTHOR_NAME:-orchestrator}" \
       commit -m "openWorker: ${slug} pointed defs" >/dev/null
   fi
-  bash "${root}/scripts/run-subtask-coder.sh" "$slug" "$n"
+  bash "${lib}/run-subtask-coder.sh" "$slug" "$n"
 )
 
 pr=""

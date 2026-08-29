@@ -121,6 +121,46 @@ test -f MISSING.md || git checkout "missing-req/${slug3}" >/dev/null
 git checkout "missing-req/${slug3}" >/dev/null
 test -f MISSING.md
 
+# pin: cycle/ carries main's stale open-worker; wake still uses req scripts
+slug_pin=pin
+git checkout main >/dev/null
+mkdir -p "requirements/${slug_pin}" requirements/_defs
+cat > "requirements/${slug_pin}/overview.md" <<EOF
+# ${slug_pin}
+
+## Catalog
+
+### group
+
+ungrouped
+
+### slices
+
+process
+
+### defs
+
+hook-shape
+EOF
+echo "1. [process] Only one check" > "requirements/${slug_pin}/specified-tests.md"
+git add requirements && git commit -m pin-spec >/dev/null
+git checkout -b "req/${slug_pin}" >/dev/null
+echo '# hook-shape' > requirements/_defs/hook-shape.md
+git add requirements/_defs/hook-shape.md && git commit -m pin-def >/dev/null
+git checkout main >/dev/null
+printf '%s\n' '#!/usr/bin/env bash' 'echo stale-open-worker >&2' 'exit 1' > scripts/open-worker.sh
+git add scripts/open-worker.sh && git commit -m stale-ow >/dev/null
+git checkout "req/${slug_pin}" >/dev/null
+./scripts/step-cycle.sh "$slug_pin" >/dev/null
+./scripts/step-cycle.sh "$slug_pin" >/dev/null
+./scripts/step-cycle.sh "$slug_pin"
+git rev-parse --verify "worker/${slug_pin}/1-1" >/dev/null
+git checkout "worker/${slug_pin}/1-1" >/dev/null
+test -f requirements/_defs/hook-shape.md
+git checkout main >/dev/null
+git checkout "req/${slug_pin}" -- scripts/open-worker.sh
+git add scripts/open-worker.sh && git commit -m restore-ow >/dev/null
+
 # incomplete: bad shape (untagged tests)
 slug_shape=shape
 git checkout main >/dev/null

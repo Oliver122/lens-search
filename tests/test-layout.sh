@@ -26,6 +26,14 @@ test -f "$tmp/repo/requirements/${slug}/overview.md"
 test -f "$tmp/repo/requirements/${slug}/specified-tests.md"
 test ! -e "$tmp/repo/requirements/${slug}/CYCLE"
 
+# All tracked shell scripts are executable (CI runs ./scripts/*.sh)
+while read -r mode path; do
+  if [[ "$mode" != "100755" ]]; then
+    echo "script not executable: ${path} mode=${mode}" >&2
+    exit 1
+  fi
+done < <(git ls-files -s -- '*.sh' | awk '{print $1, $NF}')
+
 # specify command exists
 test -f .cursor/commands/specify.md
 grep -q 'requirements/<slug>/' .cursor/commands/specify.md

@@ -68,7 +68,6 @@ jobs:
         run: |
           echo "$HOME/.cursor/bin" >> "$GITHUB_PATH"
           export PATH="$HOME/.cursor/bin:$PATH"
-          chmod +x scripts/*.sh
           for slug in ${{ steps.slugs.outputs.slugs }}; do
             bash ./scripts/step-cycle.sh "$slug"
           done

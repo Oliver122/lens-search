@@ -20,7 +20,8 @@ fi
 
 text=""
 found=0
-while IFS= read -r row; do
+mapfile -t rows < <("${root}/scripts/split-specified-tests.sh" "$slug")
+for row in "${rows[@]}"; do
   num="${row%%$'\t'*}"
   rest="${row#*$'\t'}"
   line="${rest#*$'\t'}"
@@ -29,7 +30,7 @@ while IFS= read -r row; do
     found=1
     break
   fi
-done < <("${root}/scripts/split-specified-tests.sh" "$slug")
+done
 
 if [[ "$found" -ne 1 ]]; then
   echo "build-subtask-prompt: no specified test ${n}" >&2

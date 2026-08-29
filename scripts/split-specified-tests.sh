@@ -13,7 +13,8 @@ if [[ ! -f "$tests" ]]; then
   exit 1
 fi
 
-while IFS= read -r line; do
+while IFS= read -r line || [[ -n "$line" ]]; do
+  line="${line%$'\r'}"
   if [[ "$line" =~ ^([0-9]+)\.\ \[([^]]+)\][[:space:]]+(.*)$ ]]; then
     printf '%s\t%s\t%s\n' "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}" "${BASH_REMATCH[3]}"
   elif [[ "$line" =~ ^([0-9]+)\.\ (.+)$ ]]; then

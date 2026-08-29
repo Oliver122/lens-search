@@ -10,9 +10,26 @@ cd "$tmp/repo"
 slug=cam
 
 git checkout -b "req/${slug}" >/dev/null
-mkdir -p "requirements/${slug}"
-echo overview-body > "requirements/${slug}/overview.md"
+mkdir -p "requirements/${slug}" requirements/_defs
+cat > "requirements/${slug}/overview.md" <<'EOF'
+overview-body
+
+## Catalog
+
+### group
+
+demo
+
+### slices
+
+backend
+
+### defs
+
+hook-shape
+EOF
 echo "1. First check" > "requirements/${slug}/specified-tests.md"
+echo unique-def-body > requirements/_defs/hook-shape.md
 git add requirements && git commit -m spec >/dev/null
 
 ./scripts/save-req-delta.sh "$slug"
@@ -21,6 +38,7 @@ git checkout "cycle/${slug}" >/dev/null
 test -f DELTA.md
 grep -q 'overview-body' DELTA.md
 grep -q 'First check' DELTA.md
+grep -q 'unique-def-body' DELTA.md
 # delta only: not a dump of scripts/ or README
 if grep -q '^diff --git a/README.md' DELTA.md; then
   echo "delta must not include README.md" >&2

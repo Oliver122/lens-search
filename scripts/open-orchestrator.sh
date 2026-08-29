@@ -28,11 +28,15 @@ if [[ ! -f "requirements/${slug}/specified-tests.md" ]]; then
   echo "open-orchestrator: missing specified-tests.md" >&2
   exit 1
 fi
+bash "${root}/scripts/checkout-req-defs.sh" "$slug"
 
 hash="$(bash "${root}/scripts/cycle-hash.sh" "$slug")"
 printf '%s\n' "$hash" > "requirements/${slug}/CYCLE"
 git add "requirements/${slug}"
-if [[ -n "$(git status --porcelain -- "requirements/${slug}")" ]]; then
+if [[ -d requirements/_defs ]]; then
+  git add requirements/_defs
+fi
+if [[ -n "$(git status --porcelain -- "requirements/${slug}" requirements/_defs)" ]]; then
   git -c user.email="${GIT_AUTHOR_EMAIL:-bot@local}" \
     -c user.name="${GIT_AUTHOR_NAME:-orchestrator}" \
     commit -m "openOrchestrator: ${slug} CYCLE ${hash}" >/dev/null

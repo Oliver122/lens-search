@@ -36,6 +36,33 @@ echo "$rec" | grep -q '| 1 | First observable check | pending |'
 echo "$rec" | grep -q '| 2 | Second observable check | pending |'
 echo "$rec" | grep -q '| 3 | Third observable check | pending |'
 
+slug_def=withdef
+git checkout main >/dev/null
+git checkout -b "req/${slug_def}" >/dev/null
+mkdir -p "requirements/${slug_def}" requirements/_defs
+cat > "requirements/${slug_def}/overview.md" <<'EOF'
+## Catalog
+
+### group
+
+demo
+
+### slices
+
+backend
+
+### defs
+
+hook-shape
+EOF
+echo "1. [backend] First check" > "requirements/${slug_def}/specified-tests.md"
+echo '# hook-shape' > requirements/_defs/hook-shape.md
+git add requirements && git commit -m withdef >/dev/null
+./scripts/save-req-delta.sh "$slug_def" >/dev/null
+./scripts/open-orchestrator.sh "$slug_def"
+git checkout "orchestrator/${slug_def}" >/dev/null
+test -f requirements/_defs/hook-shape.md
+
 slug1=one
 git checkout main >/dev/null
 mkdir -p "requirements/${slug1}"

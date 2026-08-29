@@ -66,6 +66,13 @@ fi
 
 (
   cd "$wt"
+  bash "${root}/scripts/checkout-req-defs.sh" "$slug"
+  if [[ -n "$(git status --porcelain -- requirements/_defs)" ]]; then
+    git add requirements/_defs
+    git -c user.email="${GIT_AUTHOR_EMAIL:-bot@local}" \
+      -c user.name="${GIT_AUTHOR_NAME:-orchestrator}" \
+      commit -m "openWorker: ${slug} pointed defs" >/dev/null
+  fi
   bash "${root}/scripts/run-subtask-coder.sh" "$slug" "$n"
 )
 

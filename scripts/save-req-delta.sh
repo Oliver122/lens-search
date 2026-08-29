@@ -21,8 +21,6 @@ else
 fi
 
 base="$(cycle_record_base_ref)"
-delta="$(git diff --no-color "$base" "$req_ref" -- "requirements/${slug}" \
-  ":(exclude)requirements/${slug}/CYCLE" || true)"
 
 wt="$(mktemp -d)"
 trap 'git -C "$root" worktree remove --force "$wt" >/dev/null 2>&1 || rm -rf "$wt"' EXIT
@@ -31,6 +29,14 @@ hash="$(
   cd "$wt"
   bash "${root}/scripts/cycle-hash.sh" "$slug"
 )"
+mapfile -t def_paths < <(cd "$wt" && bash "${root}/scripts/checkout-req-defs.sh" --list "$slug")
+if [[ ${#def_paths[@]} -gt 0 ]]; then
+  delta="$(git diff --no-color "$base" "$req_ref" -- "requirements/${slug}" \
+    "${def_paths[@]}" ":(exclude)requirements/${slug}/CYCLE" || true)"
+else
+  delta="$(git diff --no-color "$base" "$req_ref" -- "requirements/${slug}" \
+    ":(exclude)requirements/${slug}/CYCLE" || true)"
+fi
 
 cycle_record_ensure_branch "$slug"
 cycle_record_parse CYCLE.md

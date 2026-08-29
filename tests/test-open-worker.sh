@@ -12,12 +12,27 @@ export CURSOR_API_KEY=test
 
 slug=cam
 git checkout -b "req/${slug}" >/dev/null
-mkdir -p "requirements/${slug}"
-echo in > "requirements/${slug}/overview.md"
-cat > "requirements/${slug}/specified-tests.md" <<'EOF'
-1. First observable check
-2. Second observable check
+mkdir -p "requirements/${slug}" requirements/_defs
+cat > "requirements/${slug}/overview.md" <<'EOF'
+## Catalog
+
+### group
+
+demo
+
+### slices
+
+backend
+
+### defs
+
+hook-shape
 EOF
+cat > "requirements/${slug}/specified-tests.md" <<'EOF'
+1. [backend] First observable check
+2. [backend] Second observable check
+EOF
+echo '# hook-shape' > requirements/_defs/hook-shape.md
 git add requirements && git commit -m spec >/dev/null
 
 ./scripts/save-req-delta.sh "$slug" >/dev/null

@@ -19,7 +19,7 @@ if ! grep -qE '^##[[:space:]]+Catalog[[:space:]]*$' "$overview"; then
   fail "missing Catalog"
 fi
 
-row="$("${root}/scripts/read-catalog.sh" "$slug")"
+row="$(bash "${root}/scripts/read-catalog.sh" "$slug")"
 group="${row%%$'\t'*}"
 rest="${row#*$'\t'}"
 slices="${rest%%$'\t'*}"
@@ -54,7 +54,7 @@ while IFS= read -r row; do
     ui|backend|process) ;;
     *) fail "unknown slice '${slice}'" ;;
   esac
-done < <("${root}/scripts/split-specified-tests.sh" "$slug")
+done < <(bash "${root}/scripts/split-specified-tests.sh" "$slug")
 
 if [[ "$count" -eq 0 ]]; then
   fail "no numbered tests"

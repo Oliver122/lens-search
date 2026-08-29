@@ -165,6 +165,12 @@ cycle_record_base_ref() {
   fi
 }
 
+cycle_record_chmod_scripts() {
+  local root
+  root="$(git rev-parse --show-toplevel)"
+  chmod +x "${root}/scripts/"*.sh
+}
+
 cycle_record_ensure_branch() {
   local slug="$1"
   local br="cycle/${slug}"
@@ -183,7 +189,8 @@ cycle_record_ensure_branch() {
       -c user.name="${GIT_AUTHOR_NAME:-cycle}" \
       commit -m "cycle(${slug}): open record" >/dev/null
   fi
-  "${root}/scripts/assert-agent-branch.sh" "$br"
+  cycle_record_chmod_scripts
+  bash "${root}/scripts/assert-agent-branch.sh" "$br"
 }
 
 cycle_record_load() {

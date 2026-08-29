@@ -66,7 +66,7 @@ fi
 
 (
   cd "$wt"
-  "${root}/scripts/run-subtask-coder.sh" "$slug" "$n"
+  bash "${root}/scripts/run-subtask-coder.sh" "$slug" "$n"
 )
 
 pr=""

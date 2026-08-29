@@ -41,20 +41,20 @@ jobs:
               slugs="${DISPATCH_SLUG}"
               ;;
             pull_request_review)
-              slugs="$(./scripts/slug-from-ref.sh "${REVIEW_HEAD}")"
+              slugs="$(bash ./scripts/slug-from-ref.sh "${REVIEW_HEAD}")"
               ;;
             schedule)
               slugs="$(git ls-remote --heads origin 'cycle/*' | awk -F/ '{print $NF}' | tr '\n' ' ')"
               ;;
             *)
-              slugs="$(./scripts/slug-from-ref.sh "${GITHUB_REF_NAME}")"
+              slugs="$(bash ./scripts/slug-from-ref.sh "${GITHUB_REF_NAME}")"
               ;;
           esac
           echo "slugs=${slugs}" >> "$GITHUB_OUTPUT"
 
       - name: Install Cursor CLI
         if: steps.slugs.outputs.slugs != ''
-        run: ./scripts/install-cursor-cli.sh
+        run: bash ./scripts/install-cursor-cli.sh
 
       - name: Step cycle
         if: steps.slugs.outputs.slugs != ''
@@ -68,6 +68,7 @@ jobs:
         run: |
           echo "$HOME/.cursor/bin" >> "$GITHUB_PATH"
           export PATH="$HOME/.cursor/bin:$PATH"
+          chmod +x scripts/*.sh
           for slug in ${{ steps.slugs.outputs.slugs }}; do
-            ./scripts/step-cycle.sh "$slug"
+            bash ./scripts/step-cycle.sh "$slug"
           done

@@ -29,7 +29,7 @@ trap 'git -C "$root" worktree remove --force "$wt" >/dev/null 2>&1 || rm -rf "$w
 git worktree add --detach "$wt" "$req_ref" >/dev/null 2>&1
 hash="$(
   cd "$wt"
-  "${root}/scripts/cycle-hash.sh" "$slug"
+  bash "${root}/scripts/cycle-hash.sh" "$slug"
 )"
 
 cycle_record_ensure_branch "$slug"

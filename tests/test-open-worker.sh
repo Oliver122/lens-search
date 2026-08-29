@@ -37,7 +37,16 @@ git add requirements && git commit -m spec >/dev/null
 
 ./scripts/save-req-delta.sh "$slug" >/dev/null
 ./scripts/open-orchestrator.sh "$slug" >/dev/null
+git init --bare "$tmp/remote" >/dev/null
+git remote add origin "$tmp/remote"
+git push origin "main" "req/${slug}" "cycle/${slug}" "orchestrator/${slug}" >/dev/null
+cat > "$tmp/bin/gh" <<'EOF'
+#!/usr/bin/env bash
+exit 0
+EOF
+chmod +x "$tmp/bin/gh"
 ./scripts/open-worker.sh "$slug"
+git --git-dir="$tmp/remote" rev-parse --verify "refs/heads/worker/${slug}/1-1" >/dev/null
 
 git rev-parse --verify "worker/${slug}/1-1" >/dev/null
 git checkout "worker/${slug}/1-1" >/dev/null

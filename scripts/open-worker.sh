@@ -60,10 +60,19 @@ cleanup() {
 }
 trap cleanup EXIT
 
-if cycle_record_ref_exists "$worker"; then
-  git worktree add "$wt" "$worker" >/dev/null 2>&1
+start=""
+if git rev-parse --verify "refs/heads/${CR_ORCH}" >/dev/null 2>&1; then
+  start="$CR_ORCH"
+elif git rev-parse --verify "refs/remotes/origin/${CR_ORCH}" >/dev/null 2>&1; then
+  start="origin/${CR_ORCH}"
 else
-  git worktree add -b "$worker" "$wt" "$CR_ORCH" >/dev/null 2>&1
+  echo "open-worker: missing ${CR_ORCH}" >&2
+  exit 1
+fi
+if git rev-parse --verify "refs/heads/${worker}" >/dev/null 2>&1; then
+  git worktree add "$wt" "$worker"
+else
+  git worktree add -b "$worker" "$wt" "$start"
 fi
 
 (
@@ -79,8 +88,12 @@ fi
 )
 
 pr=""
+if git remote get-url origin >/dev/null 2>&1; then
+  # Push the worktree HEAD. After cycle/ checkout the primary tree may not
+  # have a local branch name git push can resolve as a src refspec.
+  git -C "$wt" push -u origin "HEAD:refs/heads/${worker}"
+fi
 if command -v gh >/dev/null 2>&1 && git remote get-url origin >/dev/null 2>&1; then
-  cycle_record_push_ref "$worker"
   existing="$(gh pr list --head "$worker" --base "$CR_ORCH" --json number --jq '.[0].number // empty' 2>/dev/null || true)"
   if [[ -z "$existing" ]]; then
     gh pr create --base "$CR_ORCH" --head "$worker" \

@@ -4,10 +4,11 @@ set -euo pipefail
 
 slug="${1:?slug required}"
 n="${2:?subtask number required}"
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 root="$(git rev-parse --show-toplevel)"
 req="requirements/${slug}"
 overview="${root}/${req}/overview.md"
-template="${root}/scripts/subtask-coder-prompt.md"
+template="${script_dir}/subtask-coder-prompt.md"
 
 if [[ ! -f "$overview" ]]; then
   echo "build-subtask-prompt: missing ${overview}" >&2
@@ -20,7 +21,7 @@ fi
 
 text=""
 found=0
-mapfile -t rows < <("${root}/scripts/split-specified-tests.sh" "$slug")
+mapfile -t rows < <("${script_dir}/split-specified-tests.sh" "$slug")
 for row in "${rows[@]}"; do
   num="${row%%$'\t'*}"
   rest="${row#*$'\t'}"
@@ -37,7 +38,7 @@ if [[ "$found" -ne 1 ]]; then
   exit 1
 fi
 
-row="$("${root}/scripts/read-catalog.sh" "$slug")"
+row="$("${script_dir}/read-catalog.sh" "$slug")"
 defs="${row#*$'\t'}"
 defs="${defs#*$'\t'}"
 
@@ -53,7 +54,7 @@ echo
 if [[ -n "$defs" ]]; then
   echo "--- pointed defs ---"
   IFS=',' read -ra ids <<< "$defs"
-  "${root}/scripts/read-defs.sh" "${ids[@]}"
+  "${script_dir}/read-defs.sh" "${ids[@]}"
   echo
 fi
 echo "--- your subtask (specified test ${n} only) ---"

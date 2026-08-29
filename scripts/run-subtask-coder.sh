@@ -4,6 +4,7 @@ set -euo pipefail
 
 slug="${1:?slug required}"
 n="${2:?subtask number required}"
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 root="$(git rev-parse --show-toplevel)"
 cd "$root"
 
@@ -15,7 +16,7 @@ if [[ "$git_dir_abs" == "$common_abs" ]]; then
 fi
 
 branch="$(git rev-parse --abbrev-ref HEAD)"
-"${root}/scripts/assert-agent-branch.sh" "$branch"
+"${script_dir}/assert-agent-branch.sh" "$branch"
 
 req="requirements/${slug}"
 if [[ ! -f "${req}/CYCLE" ]]; then
@@ -41,7 +42,7 @@ else
   agent_bin="$(command -v agent)"
 fi
 
-prompt="$("${root}/scripts/build-subtask-prompt.sh" "$slug" "$n")"
+prompt="$("${script_dir}/build-subtask-prompt.sh" "$slug" "$n")"
 if [[ -n "${ORCH_PROMPT_DIR:-}" ]]; then
   mkdir -p "$ORCH_PROMPT_DIR"
   printf '%s' "$prompt" > "${ORCH_PROMPT_DIR}/prompt-${n}.txt"

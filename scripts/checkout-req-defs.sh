@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
 # Copy Catalog-pointed _defs from req/<slug> into the current tree.
 # --list: print those paths only (needs overview.md in the current tree).
+# Uses git show so this works inside a worker worktree whose scripts are stale.
 set -euo pipefail
+
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 list=0
 if [[ "${1:-}" == "--list" ]]; then
@@ -10,9 +13,9 @@ if [[ "${1:-}" == "--list" ]]; then
 fi
 
 slug="${1:?slug required}"
-root="$(git rev-parse --show-toplevel)"
+tree="$(git rev-parse --show-toplevel)"
 
-row="$(bash "${root}/scripts/read-catalog.sh" "$slug")"
+row="$(cd "$tree" && bash "${script_dir}/read-catalog.sh" "$slug")"
 defs="${row#*$'\t'}"
 defs="${defs#*$'\t'}"
 
@@ -32,7 +35,7 @@ if [[ "$list" -eq 1 ]]; then
   exit 0
 fi
 
-cd "$root"
+cd "$tree"
 if [[ ${#paths[@]} -eq 0 ]]; then
   exit 0
 fi
@@ -46,4 +49,11 @@ else
   exit 1
 fi
 
-git checkout "$ref" -- "${paths[@]}"
+mkdir -p requirements/_defs
+for path in "${paths[@]}"; do
+  if ! git cat-file -e "${ref}:${path}" 2>/dev/null; then
+    echo "checkout-req-defs: missing ${ref}:${path}" >&2
+    exit 1
+  fi
+  git show "${ref}:${path}" > "$path"
+done

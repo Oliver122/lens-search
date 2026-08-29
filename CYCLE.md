@@ -14,7 +14,7 @@
 
 | n | text | state | worker | pr | attempt |
 |---|---|---|---|---|---|
-| 1 | Site scrapers live under `scraper-components` and are selected through one Rust enum `Scraper` with variants `Ebay`, `Kleinanzeigen`, and `Vinted`. All three implement the same `scrape-interface` (search term in; listings to the backend). Implementations are separate. | pending |  |  | 0 |
+| 1 | Site scrapers live under `scraper-components` and are selected through one Rust enum `Scraper` with variants `Ebay`, `Kleinanzeigen`, and `Vinted`. All three implement the same `scrape-interface` (search term in; listings to the backend). Implementations are separate. | in-review | worker/search-results/1-1 | 3 | 1 |
 | 2 | `Scraper::Kleinanzeigen` with term `bike` delivers one or two listings to the backend, and again with term `pencil`. No place filter. Each listing’s search term matches the term used. Each listing has title, price, URL, site, search term, first-seen date, last-seen date, and at least the first product image from that listing’s page. | pending |  |  | 0 |
 | 3 | `Scraper::Ebay` with term `bike` delivers one or two listings to the backend, and again with term `pencil`. Each listing’s search term matches the term used. Each listing has title, price, URL, site, search term, first-seen date, last-seen date, and at least the first product image from that listing’s page. | pending |  |  | 0 |
 | 4 | `Scraper::Vinted` with term `bike` delivers one or two listings to the backend, and again with term `pencil`. Each listing’s search term matches the term used. Each listing has title, price, URL, site, search term, first-seen date, last-seen date, and at least the first product image from that listing’s page. | pending |  |  | 0 |

@@ -20,8 +20,7 @@ fi
 
 orch="orchestrator/${slug}"
 base="$(cycle_record_base_ref)"
-git checkout -B "$orch" "$base" >/dev/null 2>&1
-cycle_record_chmod_scripts
+git checkout -f -B "$orch" "$base" >/dev/null
 bash "${root}/scripts/assert-agent-branch.sh" "$orch"
 
 git checkout "$req_ref" -- "requirements/${slug}"

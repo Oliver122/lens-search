@@ -54,8 +54,7 @@ case "$verdict" in
     exit 0
     ;;
   approve)
-    git checkout "$orch" >/dev/null 2>&1
-    cycle_record_chmod_scripts
+    git checkout -f "$orch" >/dev/null
     bash "${root}/scripts/assert-agent-branch.sh" "$orch"
     if ! git -c user.email="${GIT_AUTHOR_EMAIL:-bot@local}" \
       -c user.name="${GIT_AUTHOR_NAME:-orchestrator}" \

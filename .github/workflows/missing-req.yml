@@ -33,5 +33,4 @@ jobs:
           OPEN_MISSING_REQ_PUSH: "1"
           OPEN_MISSING_REQ_COMMENT: "1"
         run: |
-          chmod +x scripts/*.sh
           bash ./scripts/open-missing-req.sh "${{ inputs.slug }}" "${{ inputs.reason }}"

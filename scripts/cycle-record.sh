@@ -165,12 +165,6 @@ cycle_record_base_ref() {
   fi
 }
 
-cycle_record_chmod_scripts() {
-  local root
-  root="$(git rev-parse --show-toplevel)"
-  chmod +x "${root}/scripts/"*.sh
-}
-
 cycle_record_ensure_branch() {
   local slug="$1"
   local br="cycle/${slug}"
@@ -178,18 +172,17 @@ cycle_record_ensure_branch() {
   root="$(git rev-parse --show-toplevel)"
   cd "$root"
   if git rev-parse --verify "refs/heads/${br}" >/dev/null 2>&1; then
-    git checkout -f "$br" >/dev/null 2>&1
+    git checkout -f "$br" >/dev/null
   elif git rev-parse --verify "refs/remotes/origin/${br}" >/dev/null 2>&1; then
-    git checkout -f -B "$br" "origin/${br}" >/dev/null 2>&1
+    git checkout -f -B "$br" "origin/${br}" >/dev/null
   else
-    git checkout -f -B "$br" "$(cycle_record_base_ref)" >/dev/null 2>&1
+    git checkout -f -B "$br" "$(cycle_record_base_ref)" >/dev/null
     cycle_record_empty_doc "$slug" > CYCLE.md
     git add CYCLE.md
     git -c user.email="${GIT_AUTHOR_EMAIL:-bot@local}" \
       -c user.name="${GIT_AUTHOR_NAME:-cycle}" \
       commit -m "cycle(${slug}): open record" >/dev/null
   fi
-  cycle_record_chmod_scripts
   bash "${root}/scripts/assert-agent-branch.sh" "$br"
 }
 
